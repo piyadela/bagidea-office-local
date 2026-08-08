@@ -1869,7 +1869,24 @@ function runClaude(agent, prompt, opts = {}) {
   let isNew = false;
   if (opts.session && opts.session !== "new")
     entry = (sess[agent] || []).find((e) => e.key === opts.session);
-  else if (!opts.session) entry = latestSession(agent);
+  else if (!opts.session) {
+    if (opts.project && projectDir(opts.project)) {
+      entry = (sess[agent] || []).find((e) => e.proj === opts.project);
+    }
+    if (!entry) {
+      const matchProj = (projects || []).find(p => p.name && new RegExp(p.name, "i").test(prompt));
+      if (matchProj) {
+        entry = (sess[agent] || []).find((e) => e.proj === matchProj.id || (e.title && e.title.includes(matchProj.name)));
+        if (entry) opts.project = matchProj.id;
+      }
+    }
+    if (!entry) {
+      const lat = latestSession(agent);
+      if (lat && (!lat.proj || !opts.project || lat.proj === opts.project)) {
+        entry = lat;
+      }
+    }
+  }
   if (!entry) {
     entry = { key: "s" + Date.now(), sid: null, ts: Date.now(),
       title: String(opts.logPrompt || prompt).replace(/\s+/g, " ").slice(0, 48), log: [] };
