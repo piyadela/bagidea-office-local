@@ -5318,6 +5318,15 @@
     refreshThreadBar(true);
   };
 
+  function resolveProjName(s) {
+    if (!s) return "";
+    if (s.projName && !/^p\d+$/.test(s.projName)) return s.projName;
+    const raw = s.proj || s.projName || s.key || "";
+    const p = (PROJECTS_CACHE || []).find(x => x.id === raw || x.name === raw || (x.ts && raw.includes(String(x.ts))));
+    if (p) return p.name;
+    return raw;
+  }
+
   // force=true (agent click) always re-renders the pane — the log view is
   // shared, so "same thread as before" never means "still on screen".
   async function refreshThreadBar(force = false) {
@@ -5332,7 +5341,7 @@
       const list = r.sessions || [];
       let cur = SESS[target] ? list.find((s) => s.key === SESS[target]) : null;
       if (!cur) cur = list[0];
-      setThreadLabel((cur ? cur.title : "ยังไม่มี — จะสร้างให้เองเมื่อคุยครั้งแรก") +
+      setThreadLabel((cur ? (resolveProjName(cur) || cur.title) : "ยังไม่มี — จะสร้างให้เองเมื่อคุยครั้งแรก") +
         (cur && cur.proj ? " · 📁" : ""));
       setThreadCtx(cur && cur.lastUsage);   // restore the saved usage meter on reopen
 
@@ -5342,8 +5351,11 @@
         const curKey = cur ? cur.key : "";
         pSel.innerHTML = `<option value="">🏢 รวมทุก Project (แชทรวม)</option>` +
           list.map(s => {
-            const tag = s.proj ? `📁 [${s.proj}] ` : "🧵 ";
-            const label = tag + (s.title || s.key);
+            const pname = resolveProjName(s);
+            const tag = pname ? `📁 [${pname}] ` : "🧵 ";
+            let titleText = s.title || "";
+            if (titleText === s.key || titleText.startsWith("p17")) titleText = "";
+            const label = tag + (titleText ? titleText.slice(0, 35) : pname || s.key);
             return `<option value="${s.key}"${s.key === curKey ? " selected" : ""}>${esc(label)}</option>`;
           }).join("");
       }
@@ -5377,11 +5389,15 @@
       SESS[target] === "new",
       () => { groupView = null; hideSpeakBar(); SESS[target] = "new"; addChip(`🧵 เริ่ม thread ใหม่กับ <b>${nameOf(target)}</b>`); });
     for (const s of list) {
-      const projLabel = s.proj ? `📁 [${s.proj}] ` : "🧵 ";
-      mk(`${projLabel}${esc(s.title || s.key)}`, new Date(s.ts).toLocaleString(), s.key,
+      const pname = resolveProjName(s);
+      const projLabel = pname ? `📁 [${pname}] ` : "🧵 ";
+      let titleText = s.title || "";
+      if (titleText === s.key || titleText.startsWith("p17")) titleText = "";
+      const displayTitle = projLabel + (titleText ? titleText : pname || s.key);
+      mk(esc(displayTitle), new Date(s.ts).toLocaleString(), s.key,
         !groupView && SESS[target] !== "new" && s.key === activeKey,
         () => { groupView = null; hideSpeakBar(); CUR[target] = null; SESS[target] = s.key;
-          addChip(`🧵 สลับไป Project: <b>${esc((s.title || s.key).slice(0, 40))}</b>`); });
+          addChip(`🧵 สลับไป Project: <b>${esc(pname || (s.title || s.key).slice(0, 40))}</b>`); });
     }
     if (!list.length && SESS[target] !== "new")
       mk("(ยังไม่มี thread เก่า — คุยครั้งแรกจะสร้างให้เอง)", "", undefined, false, () => {});

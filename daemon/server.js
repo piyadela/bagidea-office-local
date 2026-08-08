@@ -4389,8 +4389,19 @@ const server = http.createServer((req, res) => {
   } else if (req.method === "GET" && req.url.startsWith("/sessions")) {
     const agent = new URL(req.url, "http://x").searchParams.get("agent") || "main";
     const list = (sess[agent] || []).slice().sort((a, b) => b.ts - a.ts).slice(0, 20);
+    const pMap = {};
+    (projects || []).forEach(p => {
+      if (p.id) pMap[p.id] = p.name;
+      if (p.ts) pMap["p" + p.ts] = p.name;
+      if (p.ts) pMap["s" + p.ts] = p.name;
+      if (p.name) pMap[p.name] = p.name;
+    });
+    const enriched = list.map(s => ({
+      ...s,
+      projName: pMap[s.proj] || pMap[s.key] || s.projName || ""
+    }));
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ sessions: list }));
+    res.end(JSON.stringify({ sessions: enriched }));
 
   } else if (req.method === "GET" && req.url === "/brains") {
     // Monitoring snapshot: every provider's connect status + every agent's brain
