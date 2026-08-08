@@ -1,0 +1,81 @@
+{
+  "id": "example-project-mongomodeleditor",
+  "name": "mongomodeleditor: Visual Schema & Workflow Designer",
+  "project": "mongomodeleditor",
+  "example": true,
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "trigger",
+      "text": "ผู้ใช้ระบุความต้องการ Schema & Workflow ใหม่",
+      "assignee": "shino",
+      "desc": "ผู้ใช้เปิดหน้า mongomodeleditor แล้วระบุโมดูลและฟิลด์ที่ต้องการออกแบบ",
+      "x": 80,
+      "y": 40
+    },
+    {
+      "id": "n2",
+      "type": "action",
+      "text": "ออกแบบ Collections และ Fields ใน app/schema.ts",
+      "assignee": "codex",
+      "desc": "กำหนดชื่อ collection, ชนิดฟิลด์ (Decimal128, embed/reference, enum, unique) และสร้าง Mongoose / Zod models",
+      "httpMethod": "POST",
+      "apiPath": "/api/projects/[name]/schemas",
+      "inputs": "ความต้องการระบบ, โมดูลงาน",
+      "outputs": "app/schema.ts, Zod Validation Schema",
+      "dbOps": "เขียน/อัปเดต data/projects.json",
+      "x": 80,
+      "y": 180
+    },
+    {
+      "id": "n3",
+      "type": "action",
+      "text": "ตรวจสอบ Linting & Validation Rules",
+      "assignee": "pran",
+      "desc": "ตรวจสอบว่าชื่อ collection และ index ถูกต้องตามข้อกำหนด ป้องกันฟิลด์ซ้ำหรือชนิดข้อมูลขัดแย้งกัน",
+      "inputs": "app/schema.ts",
+      "outputs": "รายงานข้อผิดพลาด / ผ่านการตรวจ",
+      "x": 80,
+      "y": 320
+    },
+    {
+      "id": "n4",
+      "type": "decision",
+      "text": "ผ่านการตรวจสอบ Schema หรือไม่?",
+      "assignee": "shino",
+      "desc": "หากมีข้อผิดพลาด ส่งกลับไปให้ Codex แก้ไข หากถูกต้อง ดำเนินการต่อ",
+      "x": 80,
+      "y": 460
+    },
+    {
+      "id": "n5",
+      "type": "action",
+      "text": "สร้าง Code Generators, REST API & Wiki Docs",
+      "assignee": "codex",
+      "desc": "สั่ง Generate TypeScript interfaces, Next.js REST routes (/api/projects/[name]/workflows) และเอกสาร Wiki (app/wiki/[project]/)",
+      "httpMethod": "POST",
+      "apiPath": "/api/projects/[name]/generate",
+      "inputs": "Schema Data Model",
+      "outputs": "REST routes, Mongoose models, Wiki pages",
+      "x": 80,
+      "y": 600
+    },
+    {
+      "id": "n6",
+      "type": "output",
+      "text": "บันทึกและ Sync ข้อมูลลง data/projects.json (rev)",
+      "assignee": "shino",
+      "desc": "บันทึกข้อมูลหลักพร้อมระบบ Optimistic Concurrency Control (rev) และเก็บ Snapshot ย้อนหลังใน data/history/",
+      "outputs": "data/projects.json, data/history/snapshot.json",
+      "x": 80,
+      "y": 740
+    }
+  ],
+  "edges": [
+    { "from": "n1", "to": "n2" },
+    { "from": "n2", "to": "n3" },
+    { "from": "n3", "to": "n4" },
+    { "from": "n4", "to": "n5" },
+    { "from": "n5", "to": "n6" }
+  ]
+}

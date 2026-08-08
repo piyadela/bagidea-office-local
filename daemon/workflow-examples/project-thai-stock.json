@@ -1,0 +1,83 @@
+{
+  "id": "example-project-thai-stock",
+  "name": "Thai Stock: สแกนและวิเคราะห์หุ้นไทย",
+  "project": "Thai_Stock",
+  "example": true,
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "trigger",
+      "text": "ดึงข้อมูลราคาและงบการเงินประจำวัน",
+      "assignee": "codex",
+      "desc": "ดึงข้อมูลจาก SET API, SEC API v2 และ Settrade มาลงใน facts.fundamental และ facts.fund",
+      "httpMethod": "GET",
+      "apiPath": "/api/stock/fetch-daily",
+      "outputs": "facts.fundamental, facts.fund",
+      "x": 80,
+      "y": 40
+    },
+    {
+      "id": "n2",
+      "type": "action",
+      "text": "วิเคราะห์งบการเงิน & Hard Veto Filter",
+      "assignee": "pran",
+      "desc": "ตรวจอัตราส่วน P/E, P/BV, ROE, D/E, OCF และกรองหุ้นที่มีส่วนผู้ถือหุ้นติดลบหรือขาดทุนเรื้อรัง",
+      "inputs": "facts.fundamental",
+      "outputs": "รายงานปัจจัยพื้นฐาน, Veto Flags",
+      "x": 80,
+      "y": 180
+    },
+    {
+      "id": "n3",
+      "type": "action",
+      "text": "วิเคราะห์ทางเทคนิค & Volume (Minervini/SMC)",
+      "assignee": "kwin",
+      "desc": "วิเคราะห์ Minervini Trend Template, RVOL >= 1.5, Volume Dry-Up (VDU) และ Elliott Wave HTF/LTF",
+      "inputs": "ราคาหุ้น, ปริมาณการซื้อขาย",
+      "outputs": "สัญญาณทางเทคนิค, จุดเข้า/จุดคัดสิ้น",
+      "x": 80,
+      "y": 320
+    },
+    {
+      "id": "n4",
+      "type": "action",
+      "text": "วิเคราะห์สภาวะตลาดมหภาค & Sentiment",
+      "assignee": "metha",
+      "desc": "ประเมินทิศทางดอกเบี้ย BOT, ค่าเงินบาท, SET Index และฟลักซ์ต่างชาติ (NVDR Net Flow)",
+      "inputs": "ข่าวสาร, NVDR Flow",
+      "outputs": "Macro Regime, Tailwinds/Headwinds",
+      "x": 80,
+      "y": 460
+    },
+    {
+      "id": "n5",
+      "type": "decision",
+      "text": "การตัดสินใจเสี่ยงและ Position Sizing",
+      "assignee": "pakin",
+      "desc": "เป็นผู้พิพากษาตัดสินคะแนนรวม บังคับใช้ Veto กรองหุ้นเสี่ยงสูง และคำนวณขนาดไม้ตาม Fractional Kelly (25%)",
+      "inputs": "ผลวิเคราะห์พื้นฐาน, กราฟเทคนิค, สภาพตลาด",
+      "outputs": "Position Size, Target Price, Stop Loss",
+      "x": 80,
+      "y": 600
+    },
+    {
+      "id": "n6",
+      "type": "output",
+      "text": "อนุมัติส่งสรุปการลงทุนให้ Director & CEO",
+      "assignee": "shino",
+      "desc": "ตรวจสอบความสอดคล้องตาม SPEC ก่อนส่งรายงานสรุปการลงทุนให้ CEO",
+      "outputs": "รายงานสรุปคำแนะนำการลงทุนประจำวัน",
+      "x": 80,
+      "y": 740
+    }
+  ],
+  "edges": [
+    { "from": "n1", "to": "n2" },
+    { "from": "n1", "to": "n3" },
+    { "from": "n1", "to": "n4" },
+    { "from": "n2", "to": "n5" },
+    { "from": "n3", "to": "n5" },
+    { "from": "n4", "to": "n5" },
+    { "from": "n5", "to": "n6" }
+  ]
+}

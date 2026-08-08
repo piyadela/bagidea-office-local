@@ -6200,7 +6200,7 @@ end tell`;
           if (!f.endsWith(".json")) continue;
           try { const w = JSON.parse(fs.readFileSync(path.join(base, f), "utf8"));
             out.push({ id: w.id || f.replace(/\.json$/, ""), name: w.name || f,
-              nodes: (w.nodes || []).length, example }); } catch {}
+              project: w.project || "", nodes: (w.nodes || []).length, example }); } catch {}
         }
       } catch {}
     };
@@ -6233,7 +6233,7 @@ end tell`;
       if (!id || id.startsWith("example-")) id = "wf_" + Date.now();
       const dir = path.join(WORKSPACE, "workflows"); fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, id + ".json"),
-        JSON.stringify({ id, name: w.name || "Workflow", nodes: w.nodes || [], edges: w.edges || [] }, null, 2));
+        JSON.stringify({ id, name: w.name || "Workflow", project: w.project || "", nodes: w.nodes || [], edges: w.edges || [] }, null, 2));
       res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ id }));
     } catch (e) { res.writeHead(400); res.end(String(e.message)); } });
 
@@ -6315,6 +6315,35 @@ end tell`;
               res.writeHead(200, { "content-type": "application/json" });
               res.end(JSON.stringify({ ok: !!ok, result: ok && out ? out : "รันไม่สำเร็จ ลองใหม่อีกครั้ง" }));
             } });
+      });
+    } catch (e) { res.writeHead(400); res.end(String(e.message)); } });
+
+  } else if (req.method === "POST" && req.url === "/workflows/step/run") {
+    // Run a single workflow step with its assigned agent
+    readBody(req, (body) => { try {
+      const p = JSON.parse(body || "{}");
+      const agentId = p.assignee || "main";
+      const targetAgent = reg.agents[agentId] ? agentId : "main";
+      const agentName = (reg.agents[targetAgent] && reg.agents[targetAgent].name) || targetAgent;
+      const prompt = `[Workflow Step Task]\n` +
+        (p.project ? `Project: ${p.project}\n` : "") +
+        `Workflow: ${p.workflowName || "Workflow"}\n` +
+        `Step Title: ${p.text || "Task"}\n` +
+        (p.desc ? `Description: ${p.desc}\n` : "") +
+        (p.httpMethod || p.apiPath ? `API: ${p.httpMethod || "GET"} ${p.apiPath || ""}\n` : "") +
+        (p.inputs ? `Inputs: ${p.inputs}\n` : "") +
+        (p.outputs ? `Expected Outputs: ${p.outputs}\n` : "") +
+        `\nInstructions: Perform this step thoroughly and report the detailed result.`;
+
+      queueDirectorTurn((release) => {
+        runClaude(targetAgent, prompt, {
+          logPrompt: `▶ [${agentName}] Step: ` + (p.text || "").slice(0, 40),
+          onDone: (out, ok) => {
+            release();
+            res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ ok: !!ok, agent: agentName, result: ok && out ? out : "รันขั้นตอนไม่สำเร็จ ลองใหม่อีกครั้ง" }));
+          }
+        });
       });
     } catch (e) { res.writeHead(400); res.end(String(e.message)); } });
 
