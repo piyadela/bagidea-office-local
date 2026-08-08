@@ -1874,10 +1874,19 @@ function runClaude(agent, prompt, opts = {}) {
       entry = (sess[agent] || []).find((e) => e.proj === opts.project);
     }
     if (!entry) {
-      const matchProj = (projects || []).find(p => p.name && new RegExp(p.name, "i").test(prompt));
+      const matchProj = (projects || []).find(p => {
+        if (!p.name) return false;
+        if (new RegExp(p.name, "i").test(prompt)) return true;
+        if (p.name === "FB_Inter" && (prompt.includes("@FB_CEO") || prompt.includes("@BrandStrategy") || prompt.includes("FB_Inter"))) return true;
+        if (p.name === "Microdrama Studio" && (prompt.includes("Microdrama") || prompt.includes("baiboon") || prompt.includes("ใบบุญ"))) return true;
+        return false;
+      });
       if (matchProj) {
-        entry = (sess[agent] || []).find((e) => e.proj === matchProj.id || (e.title && e.title.includes(matchProj.name)));
-        if (entry) opts.project = matchProj.id;
+        entry = (sess[agent] || []).find((e) => e.proj === matchProj.id || e.key === matchProj.id || (e.title && e.title.includes(matchProj.name)));
+        if (entry) {
+          opts.project = matchProj.id;
+          entry.proj = matchProj.id;
+        }
       }
     }
     if (!entry) {
