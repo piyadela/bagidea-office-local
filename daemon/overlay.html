@@ -5320,12 +5320,24 @@
 
   function resolveProjName(s) {
     if (!s) return "";
-    if (s.projName && !/^p\d+$/.test(s.projName)) return s.projName;
+    if (s.projName && !/^[ps]\d+$/.test(s.projName)) return s.projName;
     const raw = s.proj || s.projName || s.key || "";
     const p = (PROJECTS_CACHE || []).find(x => x.id === raw || x.name === raw || (x.ts && raw.includes(String(x.ts))));
     if (p) return p.name;
+    const text = (s.title || "") + " " + raw;
+    if (/FB_Inter/i.test(text)) return "FB_Inter";
+    if (/Microdrama/i.test(text)) return "Microdrama Studio";
+    if (/ThaiSubQC/i.test(text)) return "ThaiSubQC";
+    if (/Thai_Stock/i.test(text)) return "Thai_Stock";
+    if (/mongomodeleditor/i.test(text)) return "mongomodeleditor";
+    if (/Signal Scoreboard/i.test(text)) return "Signal Scoreboard";
+    if (/Signal Watchlist/i.test(text)) return "Signal Watchlist";
+    if (/^[ps]\d+$/.test(raw)) return "";
     return raw;
   }
+
+  // Pre-fetch projects so PROJECTS_CACHE is ready immediately
+  fetch("/projects").then((x) => x.json()).then(r => { if (r && r.projects) PROJECTS_CACHE = r.projects; }).catch(() => {});
 
   // force=true (agent click) always re-renders the pane — the log view is
   // shared, so "same thread as before" never means "still on screen".
@@ -5341,8 +5353,8 @@
       const list = r.sessions || [];
       let cur = SESS[target] ? list.find((s) => s.key === SESS[target]) : null;
       if (!cur) cur = list[0];
-      setThreadLabel((cur ? (resolveProjName(cur) || cur.title) : "ยังไม่มี — จะสร้างให้เองเมื่อคุยครั้งแรก") +
-        (cur && cur.proj ? " · 📁" : ""));
+      const curProj = resolveProjName(cur);
+      setThreadLabel((curProj ? ("📁 " + curProj + " · ") : "") + (cur ? cur.title : "ยังไม่มี — จะสร้างให้เองเมื่อคุยครั้งแรก"));
       setThreadCtx(cur && cur.lastUsage);   // restore the saved usage meter on reopen
 
       // Populate Project/Thread filter dropdown
@@ -5352,10 +5364,10 @@
         pSel.innerHTML = `<option value="">🏢 รวมทุก Project (แชทรวม)</option>` +
           list.map(s => {
             const pname = resolveProjName(s);
-            const tag = pname ? `📁 [${pname}] ` : "🧵 ";
+            const tag = pname ? `📁 [${pname}] ` : "💬 [ทั่วไป] ";
             let titleText = s.title || "";
-            if (titleText === s.key || titleText.startsWith("p17")) titleText = "";
-            const label = tag + (titleText ? titleText.slice(0, 35) : pname || s.key);
+            if (titleText === s.key || /^[ps]\d+$/.test(titleText)) titleText = "";
+            const label = tag + (titleText ? titleText.slice(0, 35) : pname || "สนทนาทั่วไป");
             return `<option value="${s.key}"${s.key === curKey ? " selected" : ""}>${esc(label)}</option>`;
           }).join("");
       }
@@ -5390,14 +5402,14 @@
       () => { groupView = null; hideSpeakBar(); SESS[target] = "new"; addChip(`🧵 เริ่ม thread ใหม่กับ <b>${nameOf(target)}</b>`); });
     for (const s of list) {
       const pname = resolveProjName(s);
-      const projLabel = pname ? `📁 [${pname}] ` : "🧵 ";
+      const projLabel = pname ? `📁 [${pname}] ` : "💬 [ทั่วไป] ";
       let titleText = s.title || "";
-      if (titleText === s.key || titleText.startsWith("p17")) titleText = "";
-      const displayTitle = projLabel + (titleText ? titleText : pname || s.key);
+      if (titleText === s.key || /^[ps]\d+$/.test(titleText)) titleText = "";
+      const displayTitle = projLabel + (titleText ? titleText : pname || "สนทนาทั่วไป");
       mk(esc(displayTitle), new Date(s.ts).toLocaleString(), s.key,
         !groupView && SESS[target] !== "new" && s.key === activeKey,
         () => { groupView = null; hideSpeakBar(); CUR[target] = null; SESS[target] = s.key;
-          addChip(`🧵 สลับไป Project: <b>${esc(pname || (s.title || s.key).slice(0, 40))}</b>`); });
+          addChip(`🧵 สลับไป Project/แชท: <b>${esc(pname || (s.title || s.key).slice(0, 40))}</b>`); });
     }
     if (!list.length && SESS[target] !== "new")
       mk("(ยังไม่มี thread เก่า — คุยครั้งแรกจะสร้างให้เอง)", "", undefined, false, () => {});

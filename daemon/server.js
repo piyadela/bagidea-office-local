@@ -4396,10 +4396,22 @@ const server = http.createServer((req, res) => {
       if (p.ts) pMap["s" + p.ts] = p.name;
       if (p.name) pMap[p.name] = p.name;
     });
-    const enriched = list.map(s => ({
-      ...s,
-      projName: pMap[s.proj] || pMap[s.key] || s.projName || ""
-    }));
+    const enriched = list.map(s => {
+      let pName = pMap[s.proj] || pMap[s.key] || s.projName || "";
+      if (!pName) {
+        const text = (s.title || "") + " " + (s.key || "") + " " + (s.proj || "");
+        if (/FB_Inter/i.test(text)) pName = "FB_Inter";
+        else if (/Microdrama/i.test(text)) pName = "Microdrama Studio";
+        else if (/ThaiSubQC/i.test(text)) pName = "ThaiSubQC";
+        else if (/Thai_Stock/i.test(text)) pName = "Thai_Stock";
+        else if (/mongomodeleditor/i.test(text)) pName = "mongomodeleditor";
+        else if (/Signal Scoreboard/i.test(text)) pName = "Signal Scoreboard";
+      }
+      return {
+        ...s,
+        projName: pName
+      };
+    });
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({ sessions: enriched }));
 
