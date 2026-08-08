@@ -441,6 +441,33 @@
       ],
       "cli": "agy",
       "voice": ""
+    },
+    "grok": {
+      "name": "GrokVisual",
+      "role": "Designer",
+      "avatar": 5,
+      "aura": "lightning",
+      "tier": 2,
+      "provider": "grok",
+      "model": "",
+      "cli": "grok",
+      "prompt": "คุณคือ GrokVisual — AI Visual & Video Specialist ของ BagIdea Office มีหน้าที่สร้างสรรค์แนวคิดภาพ, ร่าง Storyboard, เขียน Prompt ภาพ (Image Prompts) และ Prompt วิดีโอ (Video Prompts) คุณภาพสูงระดับ Cinematic สำหรับ Grok, Flux, Midjourney, Runway, Luma Dream Machine และ Sora",
+      "persona": {
+        "expertise": "AI Image & Video Prompt Engineering, Storyboarding, Visual Direction, Cinematic Lighting, Camera Motion (Pan/Zoom/Orbit/Tilt), Aspect Ratio Optimization, Photorealism, Style Transfer",
+        "personality": "มีความคิดสร้างสรรค์สูง ละเอียดเรื่ององค์ประกอบภาพและการเคลื่อนไหวกล้อง ถ่ายทอดไอเดียออกมาเป็นภาพได้อย่างมีพลังและตรงโจทย์",
+        "language": "ไทย",
+        "rules": "DO แปลงโจทย์จากทีมเป็น Image & Video Prompts สไตล์ Cinematic ที่ระบุแสง มุมกล้อง อารมณ์ภาพ และขนาดอย่างชัดเจน\nDO ระบุกล้องและการเคลื่อนไหว (Camera Motion) สำหรับ Video Prompts เสมอ\nDON'T สร้างเนื้อหาที่ผิดกฎหมายหรือละเมิดลิขสิทธิ์"
+      },
+      "skills": [
+        "file-media-toolkit",
+        "diagram-maker"
+      ],
+      "tools": [
+        "Read",
+        "Write",
+        "Bash"
+      ],
+      "voice": ""
     }
   },
   "apiKeys": {},
@@ -609,6 +636,11 @@
       "description": "Visual Schema & Workflow Designer for MongoDB, Next.js REST APIs, Zod, and MCP Server integration (jaturapornchai/mongomodeleditor).",
       "content": "You have full knowledge of and integration with mongomodeleditor (GitHub: jaturapornchai/mongomodeleditor):\nA Next.js 16 + React 19 + TypeScript + Zod 4 + Tailwind CSS 4 visual Schema & Workflow Designer.\n\nKey Components & Architecture:\n1. Visual Schema Designer (app/schema.ts, app/page.tsx):\n   - Define collections, fields, types (Decimal128, embed/reference, self-reference, enum, unique, Array<Object>).\n   - Linting & validation rules for MongoDB collections and indexes.\n   - Generators: Mongoose models, Zod validation schemas, TypeScript interfaces, Next.js REST routes, seeders, Wiki docs.\n2. Workflow Engine & Visual Editor (app/workflow.ts, app/workflow-editor.tsx, app/workflow-layout.ts):\n   - Graph-based workflow engine powered by React Flow + ELK auto-layout.\n   - Node types: trigger, action, condition, transform.\n   - 3D Viewer & World Navigation (app/workflow-3d/viewer.tsx, app/workflow-3d/world.ts using Babylon.js).\n3. MCP Integration (app/mcp/server.ts, app/mcp/route.ts):\n   - Exposes MCP tools for AI agents to query/edit schemas and workflows via stdio (`npm run mcp:stdio`) or HTTP (`/mcp`).\n4. Data Persistence & Concurrency (data/projects.json, app/store.ts):\n   - Central source of truth in data/projects.json with optimistic concurrency (`rev`).\n   - Automated history snapshots stored in data/history/ (up to 20 revisions).\n   - Pre-packaged ERP demo project in erp-example.json (5 modules, 16 collections, 116 fields).\n\nDeveloper & Execution Commands:\n- Dev Server: `npm run dev` (runs at http://localhost:3100)\n- Regression Tests: `npm test` (tests schema, workflow, codegen, linting)\n- Code Linting: `npm run lint`\n- Production Build: `npm run build`\n- Run MCP Stdio Transport: `npm run mcp:stdio`\n- Docker Container: `npm run docker:up`",
       "builtin": true
+    },
+    "wf-fb-inter-untold-history-": {
+      "name": "🔀 FB_Inter: Untold History & Space Stories (เรื่องเล",
+      "description": "Run the saved workflow: FB_Inter: Untold History & Space Stories (เรื่องเล",
+      "content": "When asked to run \"FB_Inter: Untold History & Space Stories (เรื่องเล\", follow this workflow exactly:\n\nWorkflow: FB_Inter: Untold History & Space Stories (เรื่องเล่าประวัติศาสตร์ลับ & อวกาศ)\n\nSteps:\n(1) [trigger] เริ่มค้นหาหัวข้อ Untold History & Space Stories ประจำสัปดาห์\n(2) [fetch] สแกนข่าวและเอกสารประวัติศาสตร์/อวกาศจากแหล่งข้อมูลต่างประเทศ\n(3) [action] เรียบเรียง Storytelling เขียนบทความภาษาไทยดึงดูดความสนใจ\n(4) [action] ตรวจสอบความถูกต้องของข้อมูล (Fact-Checking) และลิขสิทธิ์\n(5) [decision] ประเมินคุณภาพ Engagement Score และอนุมัติเผยแพร่\n(6) [output] สร้าง Prompt ภาพประกอบ AI Visuals และเตรียมโพสต์ลงเพจ FB_Inter\n\nFlow (A → B = do B after A; a node with several outgoing arrows runs those branches in PARALLEL; a node with several incoming arrows WAITS for all of them before continuing):\n- [trigger] เริ่มค้นหาหัวข้อ Untold History & Space Stories ประจำสัปดาห์  →  [fetch] สแกนข่าวและเอกสารประวัติศาสตร์/อวกาศจากแหล่งข้อมูลต่างประเทศ\n- [fetch] สแกนข่าวและเอกสารประวัติศาสตร์/อวกาศจากแหล่งข้อมูลต่างประเทศ  →  [action] เรียบเรียง Storytelling เขียนบทความภาษาไทยดึงดูดความสนใจ\n- [action] เรียบเรียง Storytelling เขียนบทความภาษาไทยดึงดูดความสนใจ  →  [action] ตรวจสอบความถูกต้องของข้อมูล (Fact-Checking) และลิขสิทธิ์\n- [action] ตรวจสอบความถูกต้องของข้อมูล (Fact-Checking) และลิขสิทธิ์  →  [decision] ประเมินคุณภาพ Engagement Score และอนุมัติเผยแพร่\n- [decision] ประเมินคุณภาพ Engagement Score และอนุมัติเผยแพร่  →  [output] สร้าง Prompt ภาพประกอบ AI Visuals และเตรียมโพสต์ลงเพจ FB_Inter\n\nDo the steps in order. For a node with several OUTGOING arrows, REALLY run the branches in parallel by ending the reply with one `SUB: <branch task>` line per branch (they become real ghost clones) — don't just describe splitting. At a node with several incoming arrows, wait for all branches then continue from their merged results. Report the final result clearly."
     }
   },
   "tools": [
