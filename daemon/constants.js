@@ -1,7 +1,7 @@
 const path = require("path");
 
 const REPLAY_COUNT = 80;
-const MAX_STAFF = 18;
+const MAX_STAFF = 50;
 
 const BUILTIN_TOOLS = {
   Read: "อ่านไฟล์ / รูปภาพ / PDF",
