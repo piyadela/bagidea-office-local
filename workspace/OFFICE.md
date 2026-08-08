@@ -27,3 +27,10 @@
   - MCP stdio transport: `npm run mcp:stdio`
   - Docker container: `npm run docker:up`
 
+
+## Project Specific Rules
+
+### FB_Inter (Untold History & Space Stories)
+- **Target Audience**: Tier-1 International English Markets (US, UK, CA, AU — Ages 25–54)
+- **Language Policy**: **100% ENGLISH ONLY**. ALL Facebook posts, captions, headlines, hooks, hashtags, and image/video prompts MUST be generated in English (Deep Documentary Tone B1, "Where History Meets the Cosmos"). NEVER generate Thai text for FB_Inter Facebook posts.
+- **Page Access Token**: Configured in `FB_Inter/.env` (`FACEBOOK_PAGE_ACCESS_TOKEN`) and connected to Facebook Page `Untold History & Space Stories` (Page ID `61578619623871`). Auto-posting via Graph API `/v20.0/61578619623871/feed`.
