@@ -992,7 +992,15 @@
   <span id="pttTxt">กำลังฟัง…</span>
   <span class="hint" id="pttHint"></span></div>
 
-<div id="threadBar">🧵 thread: <b id="threadName">ล่าสุด (ต่อเนื่องอัตโนมัติ)</b><span id="threadCtx" style="color:var(--dim);font-size:10.5px"></span></div>
+<div id="threadBar" style="display:flex;align-items:center;gap:6px;overflow:hidden;">
+  <span style="font-size:11px;color:var(--dim);white-space:nowrap;">📁 แยก Project:</span>
+  <select id="projThreadSelect" onchange="onSelectProjectThread(this.value)" style="background:#0c1524;color:var(--accent);border:1px solid var(--line);border-radius:4px;font-size:11px;padding:2px 6px;max-width:210px;cursor:pointer;">
+    <option value="">🏢 ทุกงาน (แชทรวม)</option>
+  </select>
+  <span style="margin:0 2px;opacity:0.3">|</span>
+  <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🧵 <b id="threadName">ล่าสุด (ต่อเนื่องอัตโนมัติ)</b></span>
+  <span id="threadCtx" style="color:var(--dim);font-size:10.5px"></span>
+</div>
 <div id="attachRow"></div>
 <!-- Speak bar for LIVE meetings only. Separate element + handler from send():
      send() hard-returns whenever groupView is set, so it can't be reused. -->
@@ -5302,6 +5310,14 @@
     } catch {}
   }
 
+  window.onSelectProjectThread = function(key) {
+    groupView = null;
+    hideSpeakBar();
+    CUR[target] = null;
+    SESS[target] = key;
+    refreshThreadBar(true);
+  };
+
   // force=true (agent click) always re-renders the pane — the log view is
   // shared, so "same thread as before" never means "still on screen".
   async function refreshThreadBar(force = false) {
@@ -5319,6 +5335,19 @@
       setThreadLabel((cur ? cur.title : "ยังไม่มี — จะสร้างให้เองเมื่อคุยครั้งแรก") +
         (cur && cur.proj ? " · 📁" : ""));
       setThreadCtx(cur && cur.lastUsage);   // restore the saved usage meter on reopen
+
+      // Populate Project/Thread filter dropdown
+      const pSel = document.getElementById("projThreadSelect");
+      if (pSel) {
+        const curKey = cur ? cur.key : "";
+        pSel.innerHTML = `<option value="">🏢 รวมทุก Project (แชทรวม)</option>` +
+          list.map(s => {
+            const tag = s.proj ? `📁 [${s.proj}] ` : "🧵 ";
+            const label = tag + (s.title || s.key);
+            return `<option value="${s.key}"${s.key === curKey ? " selected" : ""}>${esc(label)}</option>`;
+          }).join("");
+      }
+
       const key = cur ? cur.key : null;
       if (CUR[target] !== key || force) {
         CUR[target] = key;
@@ -5347,11 +5376,13 @@
     mk("🆕 เริ่ม thread ใหม่", "ความจำใหม่ ไม่ต่อจากของเดิม", "new",
       SESS[target] === "new",
       () => { groupView = null; hideSpeakBar(); SESS[target] = "new"; addChip(`🧵 เริ่ม thread ใหม่กับ <b>${nameOf(target)}</b>`); });
-    for (const s of list)
-      mk(`🧵 ${s.title || s.key}`, new Date(s.ts).toLocaleString(), s.key,
+    for (const s of list) {
+      const projLabel = s.proj ? `📁 [${s.proj}] ` : "🧵 ";
+      mk(`${projLabel}${esc(s.title || s.key)}`, new Date(s.ts).toLocaleString(), s.key,
         !groupView && SESS[target] !== "new" && s.key === activeKey,
         () => { groupView = null; hideSpeakBar(); CUR[target] = null; SESS[target] = s.key;
-          addChip(`🧵 สลับไป thread: <b>${(s.title || s.key).slice(0, 40)}</b>`); });
+          addChip(`🧵 สลับไป Project: <b>${esc((s.title || s.key).slice(0, 40))}</b>`); });
+    }
     if (!list.length && SESS[target] !== "new")
       mk("(ยังไม่มี thread เก่า — คุยครั้งแรกจะสร้างให้เอง)", "", undefined, false, () => {});
     // 🗣 group sessions: every meeting, readable any time
