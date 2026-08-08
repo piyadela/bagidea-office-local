@@ -183,8 +183,7 @@
     "📂 เปิด…":"📂 Open…","ตัวอย่าง (อ่านอย่างเดียว)":"Examples (read-only)","ของฉัน":"Mine",
     "เมื่อสั่งให้เริ่ม…":"When started…","เมื่อสั่งให้เริ่ม":"When started","หาข่าว A":"Find news A","หาข่าว B":"Find news B","รวมแล้วเขียนสรุป":"Merge & summarize",
   };
-  let WL = null;  // WinLang instance for non-English langs (Thai → lang via /i18n)
-  // th → as-is · other langs → WinLang map first · English (and any gap) → TR.
+  let WL = null;
   function tr(s){
     if (LANG==="th") return s;
     if (WL && WL.map[s]!=null) return WL.map[s];
@@ -199,11 +198,19 @@
   let selectedNodeId = null;
   let agentsList = [];
 
+  function loadAgents(cb) {
+    fetch("/registry").then(r=>r.json()).then(reg => {
+      if (reg && reg.agents) {
+        agentsList = Object.entries(reg.agents).map(([id, a]) => ({ id, name: a.name || id, role: a.role || "" }));
+      }
+      if (cb) cb();
+    }).catch(() => { if (cb) cb(); });
+  }
+
   fetch("/registry").then(r=>r.json()).then(async reg=>{
     if (reg && reg.agents) {
       agentsList = Object.entries(reg.agents).map(([id, a]) => ({ id, name: a.name || id, role: a.role || "" }));
     }
-    // Populate project selector
     fetch("/stats").then(r=>r.json()).then(st => {
       const ps = (st && st.projects) || [];
       const sel = document.getElementById("projselect");
@@ -269,6 +276,18 @@
       </div>`;
       return;
     }
+
+    fetch("/registry").then(r=>r.json()).then(reg => {
+      if (reg && reg.agents) {
+        agentsList = Object.entries(reg.agents).map(([id, a]) => ({ id, name: a.name || id, role: a.role || "" }));
+      }
+      const sel = document.getElementById("inspAssignee");
+      if (sel) {
+        const curVal = n.assignee || sel.value || "";
+        sel.innerHTML = `<option value="">(ไม่ระบุ / Director)</option>` +
+          agentsList.map(a => `<option value="${a.id}"${curVal===a.id?" selected":""}>${esc(a.name)} (${esc(a.role)})</option>`).join("");
+      }
+    }).catch(()=>{});
 
     const agentOpts = `<option value="">(ไม่ระบุ / Director)</option>` +
       agentsList.map(a => `<option value="${a.id}"${(n.assignee||"")===a.id?" selected":""}>${esc(a.name)} (${esc(a.role)})</option>`).join("");
