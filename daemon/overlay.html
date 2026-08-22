@@ -3596,6 +3596,10 @@
          </div>
          <div style="font-size:10.5px;color:var(--dim);margin-top:4px">Claude ใช้ login/แผนเดิม · เจ้าอื่นใช้ key แยก (ประหยัดกว่า)</div>
        </div>
+       <div class="field"><label>🏠 โปรเจคประจำ (HOME) — agent นี้ทำงานอยู่ในโปรเจคไหน</label>
+         <select id="eHome" style="width:100%"><option value="">(ไม่ผูก — ทำงานกลางออฟฟิศ)</option></select>
+         <div style="font-size:10.5px;color:var(--dim);margin-top:4px">ผูกแล้วงานของเขาจะเข้าโฟลเดอร์โปรเจคนี้เสมอ และแชทจะไม่ปนกับโปรเจคอื่น</div>
+       </div>
        <div class="field"><label>💻 LOCAL CLI ENGINE — รันผ่าน CLI บนเครื่อง (แทน API)</label>
          <select id="eCli" style="width:100%">
            <option value="">(ดีฟอลต์ — รันผ่าน Claude / API)</option>
@@ -3971,6 +3975,14 @@
     }
     modalCard.querySelector("#eName").value = a.name;
     if (!isUser && modalCard.querySelector("#eCli")) modalCard.querySelector("#eCli").value = a.cli || "";
+    const homeSel = !isUser && modalCard.querySelector("#eHome");
+    if (homeSel) {
+      (PROJECTS_CACHE || []).forEach((p) => {
+        const op = document.createElement("option");
+        op.value = p.id; op.textContent = p.name; homeSel.appendChild(op);
+      });
+      homeSel.value = a.home || "";
+    }
     modalCard.querySelector("#eCancel").onclick = () => openSettings("agents");
     modalCard.querySelector("#eSave").onclick = async () => {
       const name = modalCard.querySelector("#eName").value.trim();
@@ -3984,6 +3996,7 @@
             provider: (modalCard.querySelector("#eProvider") || {}).value || "claude",
             model: (modalCard.querySelector("#eModel") || {}).value || "",
             cli: (modalCard.querySelector("#eCli") || {}).value || "",
+            home: (modalCard.querySelector("#eHome") || {}).value || "",
             persona: {
               expertise: modalCard.querySelector("#eExpertise").value,
               personality: modalCard.querySelector("#ePersonality").value,

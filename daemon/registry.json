@@ -187,7 +187,8 @@
         "Read",
         "Write"
       ],
-      "cli": "agy"
+      "cli": "agy",
+      "home": "p1785914005096"
     },
     "microdrama-planner": {
       "name": "PlotPlanner",
@@ -210,7 +211,8 @@
       ],
       "cli": "codex",
       "voice": "",
-      "model": "claude-opus-5"
+      "model": "claude-opus-5",
+      "home": "p1785914005096"
     },
     "microdrama-hook": {
       "name": "HookSpecialist",
@@ -233,7 +235,8 @@
       ],
       "cli": "agy",
       "voice": "",
-      "model": "claude-opus-5"
+      "model": "claude-opus-5",
+      "home": "p1785914005096"
     },
     "microdrama-image": {
       "name": "ImageCrafter",
@@ -256,7 +259,8 @@
       ],
       "cli": "agy",
       "voice": "",
-      "model": "claude-opus-5"
+      "model": "claude-opus-5",
+      "home": "p1785914005096"
     },
     "microdrama-vdo-prompt": {
       "name": "VDOAnimater",
@@ -279,7 +283,8 @@
       ],
       "cli": "agy",
       "voice": "",
-      "model": "claude-opus-5"
+      "model": "claude-opus-5",
+      "home": "p1785914005096"
     },
     "microdrama-sound": {
       "name": "SoundDirector",
@@ -302,7 +307,8 @@
       ],
       "cli": "agy",
       "voice": "",
-      "model": "claude-opus-5"
+      "model": "claude-opus-5",
+      "home": "p1785914005096"
     },
     "microdrama-storyboard": {
       "name": "ShotCrafter",
@@ -322,7 +328,8 @@
         "Read",
         "Write"
       ],
-      "cli": "codex"
+      "cli": "codex",
+      "home": "p1785914005096"
     },
     "microdrama-editor": {
       "name": "EditorDirector",
@@ -345,7 +352,8 @@
       ],
       "cli": "agy",
       "voice": "",
-      "model": "claude-opus-5"
+      "model": "claude-opus-5",
+      "home": "p1785914005096"
     },
     "fb-inter-ceo": {
       "name": "FB_CEO",
@@ -371,7 +379,8 @@
         "Write"
       ],
       "cli": "agy",
-      "voice": ""
+      "voice": "",
+      "home": "p1785920265302"
     },
     "fb-inter-brand": {
       "name": "BrandStrategy",
@@ -394,7 +403,8 @@
         "Write"
       ],
       "cli": "agy",
-      "voice": ""
+      "voice": "",
+      "home": "p1785920265302"
     },
     "fb-inter-content": {
       "name": "ContentFactory",
@@ -417,7 +427,8 @@
         "Write"
       ],
       "cli": "codex",
-      "voice": ""
+      "voice": "",
+      "home": "p1785920265302"
     },
     "fb-inter-guard": {
       "name": "OriginalityGuard",
@@ -440,7 +451,8 @@
         "Write"
       ],
       "cli": "agy",
-      "voice": ""
+      "voice": "",
+      "home": "p1785920265302"
     },
     "grok": {
       "name": "GrokVisual",

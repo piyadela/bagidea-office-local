@@ -35,6 +35,7 @@ const { RunWatchdog } = require("./watchdog");
 const { stripStatus, verdict: autoVerdict, readStatus } = require("./autopilot");
 const projtrust = require("./projecttrust");
 const { wireWorkspaceSettings } = require("./wire-hooks-runtime");
+const { pickSession } = require("./session-pick.js");
 const { killTree } = require("./kill-tree");   // cross-platform child reap (issue #15 review)
 
 // Issue #15 (Bug 1) — main runs need both a hard wall-clock cap and an idle
@@ -1863,39 +1864,25 @@ SUB: <งานย่อยที่ชัดเจนครบถ้วนใ�
 function runClaude(agent, prompt, opts = {}) {
   const task = "t" + ++taskCounter;
 
-  // Session resolution: explicit key > latest > fresh. Fresh threads are
-  // created up-front so their history records from the very first message.
+  // Session resolution: explicit key > newest thread of the SAME home > fresh.
+  // Fresh threads are created up-front so their history records from the very
+  // first message.
   let entry = null;
   let isNew = false;
+  // Where does this run belong? What the caller asked for, else the agent's HOME
+  // project (a project team never wanders into another project), else a project
+  // named in the task itself. No match → general office work.
+  if (!opts.project || !projectDir(opts.project)) {
+    // A homed agent defaults to its own project — except when the owner opened a
+    // specific thread, where that thread's own home wins.
+    const home = (reg.agents[agent] || {}).home;
+    const homed = home && projectDir(home) && (!opts.session || opts.session === "new");
+    opts.project = homed ? home : (projectFromPrompt(prompt) || null);
+  }
   if (opts.session && opts.session !== "new")
     entry = (sess[agent] || []).find((e) => e.key === opts.session);
-  else if (!opts.session) {
-    if (opts.project && projectDir(opts.project)) {
-      entry = (sess[agent] || []).find((e) => e.proj === opts.project);
-    }
-    if (!entry) {
-      const matchProj = (projects || []).find(p => {
-        if (!p.name) return false;
-        if (new RegExp(p.name, "i").test(prompt)) return true;
-        if (p.name === "FB_Inter" && (prompt.includes("@FB_CEO") || prompt.includes("@BrandStrategy") || prompt.includes("FB_Inter"))) return true;
-        if (p.name === "Microdrama Studio" && (prompt.includes("Microdrama") || prompt.includes("baiboon") || prompt.includes("ใบบุญ"))) return true;
-        return false;
-      });
-      if (matchProj) {
-        entry = (sess[agent] || []).find((e) => e.proj === matchProj.id || e.key === matchProj.id || (e.title && e.title.includes(matchProj.name)));
-        if (entry) {
-          opts.project = matchProj.id;
-          entry.proj = matchProj.id;
-        }
-      }
-    }
-    if (!entry) {
-      const lat = latestSession(agent);
-      if (lat && (!lat.proj || !opts.project || lat.proj === opts.project)) {
-        entry = lat;
-      }
-    }
-  }
+  else if (!opts.session)
+    entry = pickSession(sess[agent], opts.project, (id) => !!projectDir(id));
   if (!entry) {
     entry = { key: "s" + Date.now(), sid: null, ts: Date.now(),
       title: String(opts.logPrompt || prompt).replace(/\s+/g, " ").slice(0, 48), log: [] };
@@ -2837,16 +2824,14 @@ function makeDelegateFilter(depth, session, onHit) {
               `เข้าไปทำตอนนี้ไม่ได้ รอจนเจ้าของปิดหน้าต่างก่อน`, false, depth, session);
             return;
           }
-          const tl = sess[t] || [];
-          const te = tl.length ? tl.reduce((a, b) => (a.ts > b.ts ? a : b)) : null;
           // Carry the autonomy mandate on both the first run AND any auto-resume.
           const dinst = inst + DELEGATE_NOTE;
           runClaude(t, dinst, {
             project: proj,
-            // No project → a FRESH workspace thread so the agent never inherits a
-            // stale project binding from its previous task. With a project, fork a
-            // new thread only when the agent's latest one lives elsewhere.
-            session: proj ? ((!te || te.proj !== proj) ? "new" : undefined) : "new",
+            // Thread choice is home-scoped (session-pick.js): the agent continues its
+            // newest thread in THIS project (or in the shared workspace when there is
+            // none) and can never inherit one that lives somewhere else. So the
+            // delegate keeps its context per project instead of restarting cold.
             resumable: true, resumePrompt: dinst,   // delegated work auto-resumes after a limit/restart
             onDone: (out, ok) => verifyThenReport(t, inst, out, ok, depth, session, proj),
           });
@@ -2869,8 +2854,8 @@ function verifyThenReport(fromId, task, out, ok, depth, session, proj) {
   if (!reg.verifyDelegated || reg.ecoMode || !ok) return reportToMain(fromId, out, ok, depth, session);
   const a = reg.agents[fromId] || { name: fromId };
   // Snapshot the assignee's WORK thread now — before the review run spawns a new one.
-  const wl = sess[fromId] || [];
-  const workSess = wl.length ? wl.reduce((x, y) => (x.ts > y.ts ? x : y)).key : undefined;
+  const wl = pickSession(sess[fromId], proj, (id) => !!projectDir(id));
+  const workSess = wl ? wl.key : undefined;
   const reviewPrompt =
     `You are a STRICT reviewer. Your teammate ${a.name} was given this task:\n` +
     `"""${String(task).slice(0, 2000)}"""\n\nThey reported this result:\n` +
@@ -4422,22 +4407,9 @@ const server = http.createServer((req, res) => {
       if (p.ts) pMap["s" + p.ts] = p.name;
       if (p.name) pMap[p.name] = p.name;
     });
-    const enriched = list.map(s => {
-      let pName = pMap[s.proj] || pMap[s.key] || s.projName || "";
-      if (!pName) {
-        const text = (s.title || "") + " " + (s.key || "") + " " + (s.proj || "");
-        if (/FB_Inter/i.test(text)) pName = "FB_Inter";
-        else if (/Microdrama/i.test(text)) pName = "Microdrama Studio";
-        else if (/ThaiSubQC/i.test(text)) pName = "ThaiSubQC";
-        else if (/Thai_Stock/i.test(text)) pName = "Thai_Stock";
-        else if (/mongomodeleditor/i.test(text)) pName = "mongomodeleditor";
-        else if (/Signal Scoreboard/i.test(text)) pName = "Signal Scoreboard";
-      }
-      return {
-        ...s,
-        projName: pName
-      };
-    });
+    // A thread's binding IS the label — no name-guessing from the title, which
+    // used to file threads under a project they never ran in.
+    const enriched = list.map(s => ({ ...s, projName: pMap[s.proj] || "" }));
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({ sessions: enriched }));
 
@@ -4691,6 +4663,13 @@ const server = http.createServer((req, res) => {
             ? p.provider : (cur.provider || "claude"),
           model: String(p.model !== undefined ? p.model : (cur.model || "")).slice(0, 60),
           cli: String(p.cli !== undefined ? p.cli : (cur.cli || "")).slice(0, 60),
+          // 🏠 home project — the team room this agent works in. Its runs default
+          // there and its threads never mix with another project's (session-pick.js).
+          // An unknown/deleted project clears the binding instead of sticking.
+          home: (() => {
+            const h = p.home !== undefined ? p.home : (cur.home || "");
+            return h && projectDir(h) ? h : "";
+          })(),
         };
         saveReg();
         pushRoster();

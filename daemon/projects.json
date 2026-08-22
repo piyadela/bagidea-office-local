@@ -23,7 +23,7 @@
   {
     "id": "p1785914005096",
     "name": "Microdrama Studio",
-    "dir": "L:\\04.bagidea_office_AI_Agent\\bagidea-office-main\\workspace\\projects",
+    "dir": "L:\\04.bagidea_office_AI_Agent\\bagidea-office-main\\workspace\\projects\\microdrama-studio",
     "ts": 1785914005096,
     "created": false
   },
@@ -40,5 +40,12 @@
     "dir": "L:\\04.bagidea_office_AI_Agent\\mongomodeleditor",
     "ts": 1786000000000,
     "created": false
+  },
+  {
+    "id": "p1786166786123",
+    "name": "ThaiSubQC",
+    "dir": "L:\\04.bagidea_office_AI_Agent\\bagidea-office-main\\workspace\\projects\\ThaiSubQC",
+    "ts": 1786166786123,
+    "created": true
   }
 ]
