@@ -685,7 +685,7 @@
   "places": {},
   "seededDirectorWeb": true,
   "heartbeatMin": 60,
-  "socialMin": 120,
+  "socialMin": 0,
   "proposalMin": 120,
   "channelNotify": true,
   "autoApprove": false,

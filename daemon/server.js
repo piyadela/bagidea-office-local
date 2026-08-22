@@ -3828,6 +3828,11 @@ const MOOD_LINES = {
 };
 let lastAmbient = Date.now();
 function ambientTick(now) {
+  // Idle mood lines share the SAME chatter budget as banter: socialMin = 0 means
+  // "no small talk at all", not "no scheduled small talk but a random canned
+  // one-liner every minute anyway" — which posted ~30 messages an hour into the
+  // chat the owner has to read.
+  if (!Number(reg.socialMin !== undefined ? reg.socialMin : 120)) return;
   if (activeDiscussions > 0 || agentBusy.size > 0) return;
   if (now - lastAmbient < 55 * 1000) return;        // at most once every ~55s
   if (Math.random() > 0.45) return;                 // ...and only ~45% of those
