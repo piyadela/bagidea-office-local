@@ -40,6 +40,7 @@
 | Thai_Stock | Codex (เขียนโค้ด) | Pran, Kwin, Metha, Pakin — กฎงานอยู่ใน Thai_Stock/AGENTS.md และ SPEC-thai-fund-agent.md | ทีมกลาง |
 | Signal Scoreboard | Pran | Codex, Kwin, Pakin, Metha | ทีมกลาง |
 | Signal Watchlist Board | Codex | Metha | ทีมกลาง |
+| TradingSystems (Multi-Agent Trading Analysis Framework V1) | Codex (เขียนโค้ด Python) | Kwin — นิยามกฎ PA/SMC/ICT/RTM/Fib/Elliott · Pakin — กฎความเสี่ยง RISK-01..04 · กติกางานอยู่ใน AGENTS.md และ FRAMEWORK_SPEC.md ในโฟลเดอร์โปรเจค | ทีมกลาง |
 | ThaiSubQC | Codex | — | ทีมกลาง |
 | mongomodeleditor | Codex | — | ทีมกลาง |
 | งานภาพ/วิดีโอนอกสาย Microdrama | GrokVisual | — | ทีมกลาง |
