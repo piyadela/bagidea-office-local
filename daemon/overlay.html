@@ -3608,6 +3608,7 @@
            <option value="agy">Antigravity CLI (agy)</option>
          </select>
          <div style="font-size:10.5px;color:var(--dim);margin-top:4px">สลับไปรันผ่าน CLI ของโมเดลตัวนั้นบนเครื่องที่ติดตั้งไว้แล้ว</div>
+         <div id="eCliWarn" style="display:none;margin-top:6px;font-size:11px;color:#ffb054"></div>
        </div>
        <div class="field"><label>✨ PERSONA COPILOT — บอกสั้นๆ ว่าอยากได้ agent แบบไหน (เติมให้ทุกช่อง)</label>
          <div class="assistrow">
@@ -3982,6 +3983,22 @@
         op.value = p.id; op.textContent = p.name; homeSel.appendChild(op);
       });
       homeSel.value = a.home || "";
+    }
+    // ช่อง TOOLS / MODEL ไม่ได้มีผลกับทุก engine — บอกความจริงตรงนี้ ไม่ให้ตั้งค่าที่ไม่ทำงานแล้วนึกว่าตั้งแล้ว
+    const cliSel = !isUser && modalCard.querySelector("#eCli");
+    const cliWarn = modalCard.querySelector("#eCliWarn");
+    if (cliSel && cliWarn) {
+      const syncCliWarn = () => {
+        const v = String(cliSel.value || "").toLowerCase();
+        const msg = !v ? ""
+          : v === "grok" ? "⚠ รันผ่าน Grok CLI — ช่อง TOOLS ใช้ได้จริง แต่โมเดลที่ขึ้นต้นด้วย claude- จะถูกข้าม"
+          : v === "claude" ? ""
+          : "⚠ รันผ่าน " + v + " CLI — ช่อง TOOLS ด้านล่างจะไม่ถูกส่งให้ engine นี้ (สิทธิ์ขึ้นกับ sandbox ของ " + v + " เอง) และโมเดลที่ขึ้นต้นด้วย claude- จะถูกข้าม ตัวนี้จะรันบนโมเดลดีฟอลต์ของ " + v;
+        cliWarn.textContent = msg;
+        cliWarn.style.display = msg ? "block" : "none";
+      };
+      cliSel.onchange = syncCliWarn;
+      syncCliWarn();
     }
     modalCard.querySelector("#eCancel").onclick = () => openSettings("agents");
     modalCard.querySelector("#eSave").onclick = async () => {

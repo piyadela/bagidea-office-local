@@ -28,6 +28,24 @@
   - Docker container: `npm run docker:up`
 
 
+## ใครดูแลโปรเจคไหน (Project ownership)
+
+ตารางนี้คือที่เดียวที่ Director ใช้ตัดสินว่างานของโปรเจคหนึ่งควรตกกับใคร — แก้ที่นี่ที่เดียวแล้วทั้งออฟฟิศเปลี่ยนตาม
+ทีมที่มี **โปรเจคประจำ (home)** จะทำงานอยู่ในโฟลเดอร์นั้นเสมอและแชทไม่ปนกับโปรเจคอื่น ส่วนทีมกลางรับงานข้ามโปรเจคได้ ต้องระบุโปรเจคตอนสั่งงานทุกครั้ง
+
+| โปรเจค | ผู้รับผิดชอบหลัก | ทีมสนับสนุน | แบบ |
+|---|---|---|---|
+| Microdrama Studio | BibleMaster (คุม bible) | PlotPlanner → HookSpecialist → ShotCrafter → ImageCrafter / VDOAnimater / SoundDirector → EditorDirector | home (ผูกถาวร) |
+| FB_Inter | FB_CEO | BrandStrategy, ContentFactory, OriginalityGuard | home (ผูกถาวร) |
+| Thai_Stock | Codex (เขียนโค้ด) | Pran, Kwin, Metha, Pakin — กฎงานอยู่ใน Thai_Stock/AGENTS.md และ SPEC-thai-fund-agent.md | ทีมกลาง |
+| Signal Scoreboard | Pran | Codex, Kwin, Pakin, Metha | ทีมกลาง |
+| Signal Watchlist Board | Codex | Metha | ทีมกลาง |
+| ThaiSubQC | Codex | — | ทีมกลาง |
+| mongomodeleditor | Codex | — | ทีมกลาง |
+| งานภาพ/วิดีโอนอกสาย Microdrama | GrokVisual | — | ทีมกลาง |
+
+**เส้นแบ่งงานภาพ:** ภาพและวิดีโอของซีรีส์ Microdrama เป็นของ ImageCrafter / VDOAnimater / ShotCrafter เท่านั้น (ต้องคุมหน้าตัวละครด้วย Seed ตามคู่มือ Dramy.ai) ส่วน GrokVisual รับงานภาพนอกสายนั้นทั้งหมด
+
 ## Project Specific Rules
 
 ### FB_Inter (Untold History & Space Stories)

@@ -4435,7 +4435,10 @@ const server = http.createServer((req, res) => {
       const lu = latest && latest.lastUsage;
       const usage = lu ? { in: lu.in, out: lu.out, win: lu.win,
         pct: lu.win ? Math.min(100, Math.round(lu.in / lu.win * 100)) : 0, ts: lu.ts } : null;
-      agents.push({ id, name: a.name, role: a.role, provider: p, cli: a.cli || "", model: a.model || "", tag: modelTag(id), usage });
+      // A local CLI engine ignores a claude-* model (it runs its own default), so
+      // reporting one here just tells the owner a model is in use that never is.
+      const shownModel = (a.cli && /^claude-/i.test(a.model || "")) ? "" : (a.model || "");
+      agents.push({ id, name: a.name, role: a.role, provider: p, cli: a.cli || "", model: shownModel, tag: modelTag(id), usage });
       (byProvider[p] = byProvider[p] || []).push(id);
     }
     const ids = Array.from(new Set([...KNOWN, ...Object.keys(pc)]));
