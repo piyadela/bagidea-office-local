@@ -489,6 +489,7 @@
   "providerConfig": {
     "claude": {
       "models": [
+        "claude-fable-5-1",
         "claude-opus-5",
         "claude-sonnet-5",
         "claude-fable-5",
@@ -498,10 +499,9 @@
         "claude-opus-4-6",
         "claude-opus-4-5-20251101",
         "claude-haiku-4-5-20251001",
-        "claude-sonnet-4-5-20250929",
-        "claude-opus-4-1-20250805"
+        "claude-sonnet-4-5-20250929"
       ],
-      "modelsAt": 1785939430898
+      "modelsAt": 1788592548501
     },
     "ollama": {
       "models": [
@@ -655,6 +655,12 @@
       "name": "🔀 FB_Inter: Untold History & Space Stories (เรื่องเล",
       "description": "Run the saved workflow: FB_Inter: Untold History & Space Stories (เรื่องเล",
       "content": "When asked to run \"FB_Inter: Untold History & Space Stories (เรื่องเล\", follow this workflow exactly:\n\nWorkflow: FB_Inter: Untold History & Space Stories (เรื่องเล่าประวัติศาสตร์ลับ & อวกาศ)\n\nSteps:\n(1) [trigger] เริ่มค้นหาหัวข้อ Untold History & Space Stories ประจำสัปดาห์\n(2) [fetch] สแกนข่าวและเอกสารประวัติศาสตร์/อวกาศจากแหล่งข้อมูลต่างประเทศ\n(3) [action] เรียบเรียง Storytelling เขียนบทความภาษาไทยดึงดูดความสนใจ\n(4) [action] ตรวจสอบความถูกต้องของข้อมูล (Fact-Checking) และลิขสิทธิ์\n(5) [decision] ประเมินคุณภาพ Engagement Score และอนุมัติเผยแพร่\n(6) [output] สร้าง Prompt ภาพประกอบ AI Visuals และเตรียมโพสต์ลงเพจ FB_Inter\n\nFlow (A → B = do B after A; a node with several outgoing arrows runs those branches in PARALLEL; a node with several incoming arrows WAITS for all of them before continuing):\n- [trigger] เริ่มค้นหาหัวข้อ Untold History & Space Stories ประจำสัปดาห์  →  [fetch] สแกนข่าวและเอกสารประวัติศาสตร์/อวกาศจากแหล่งข้อมูลต่างประเทศ\n- [fetch] สแกนข่าวและเอกสารประวัติศาสตร์/อวกาศจากแหล่งข้อมูลต่างประเทศ  →  [action] เรียบเรียง Storytelling เขียนบทความภาษาไทยดึงดูดความสนใจ\n- [action] เรียบเรียง Storytelling เขียนบทความภาษาไทยดึงดูดความสนใจ  →  [action] ตรวจสอบความถูกต้องของข้อมูล (Fact-Checking) และลิขสิทธิ์\n- [action] ตรวจสอบความถูกต้องของข้อมูล (Fact-Checking) และลิขสิทธิ์  →  [decision] ประเมินคุณภาพ Engagement Score และอนุมัติเผยแพร่\n- [decision] ประเมินคุณภาพ Engagement Score และอนุมัติเผยแพร่  →  [output] สร้าง Prompt ภาพประกอบ AI Visuals และเตรียมโพสต์ลงเพจ FB_Inter\n\nDo the steps in order. For a node with several OUTGOING arrows, REALLY run the branches in parallel by ending the reply with one `SUB: <branch task>` line per branch (they become real ghost clones) — don't just describe splitting. At a node with several incoming arrows, wait for all branches then continue from their merged results. Report the final result clearly."
+    },
+    "game-3d-production": {
+      "name": "3D & Game Production",
+      "description": "Work INSIDE a running Blender, Godot, Unity, Unreal or Roblox Studio through its MCP server — build, run, look at the result, and fix it — instead of only writing files and hoping.",
+      "content": "The office can drive real creative tools. Add the one you need in 🧰 Tools Hub\n(Creative & game dev), then tick `mcp:<name>` on the agent that will use it.\n\n• Blender    `uvx blender-mcp`      — model, texture, light, render; pull assets from Poly Haven/Sketchfab\n• Godot      `npx -y @coding-solo/godot-mcp` — launch the editor, run a scene, READ THE DEBUG OUTPUT\n• Unity      `uvx mcpforunityserver` — assets, scenes, components, scripts, builds\n• Unreal     `npx -y unreal-engine-mcp-server` — actors, Blueprints, editor automation\n• Roblox     `npx -y @chrrxs/robloxstudio-mcp@latest --auto-install-plugin` — scripts, Luau, playtests\n\nHow to work, in order:\n1. CHECK THE TOOL IS CONNECTED before planning around it. Each of these needs something\n   on the other side — an add-on enabled, the editor open, Studio restarted. If it is not\n   connected, say so and tell the owner the one step to fix it. Do not fake progress.\n2. Read the scene before you change it. Ask what objects/nodes/actors exist rather than\n   assuming the names in your head match the ones in the project.\n3. Change SMALL, then LOOK. Render a frame, run the scene, take the screenshot, read the\n   debug output. These tools exist so you can see the result — an agent that edits blind\n   through an engine MCP is slower than one editing files, not faster.\n4. Anything you cannot verify by looking, say you have not verified.\n\nSource files still belong in git. Treat the editor as where you inspect and iterate, and\nthe repo as what you ship: commit scenes, scripts and assets as normal files, and never\nleave the only copy of an hour of work living inside an unsaved editor session.\n\nFor look and art direction, follow the project's own reference (a Look Bible, a rubric, a\ngolden reference shot) if it has one — match it, do not invent a new style mid-project.",
+      "builtin": true
     }
   },
   "tools": [
@@ -680,6 +686,36 @@
     },
     "web-bg": {
       "command": "npx -y @playwright/mcp@latest --headless --isolated"
+    },
+    "github": {
+      "command": "npx -y @modelcontextprotocol/server-github"
+    },
+    "fetch": {
+      "command": "npx -y @kazuph/mcp-fetch"
+    },
+    "postgres": {
+      "command": "npx -y @modelcontextprotocol/server-postgres postgresql://user:pass@localhost/db"
+    },
+    "notion": {
+      "command": "npx -y @notionhq/notion-mcp-server"
+    },
+    "puppeteer": {
+      "command": "npx -y @modelcontextprotocol/server-puppeteer"
+    },
+    "sqlite": {
+      "command": "npx -y mcp-server-sqlite-npx C:\\path\\to\\db.sqlite"
+    },
+    "browser": {
+      "command": "npx -y @playwright/mcp@latest"
+    },
+    "memory": {
+      "command": "npx -y @modelcontextprotocol/server-memory"
+    },
+    "thinking": {
+      "command": "npx -y @modelcontextprotocol/server-sequential-thinking"
+    },
+    "files": {
+      "command": "npx -y @modelcontextprotocol/server-filesystem C:\\Users\\me\\Documents"
     }
   },
   "seededWebMcp": true,
@@ -698,5 +734,13 @@
     "main": [
       "Write"
     ]
+  },
+  "execBackends": {},
+  "ghostWorktrees": false,
+  "semantic": {
+    "enabled": false,
+    "baseUrl": "",
+    "model": "",
+    "key": ""
   }
 }

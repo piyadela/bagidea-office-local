@@ -30,6 +30,10 @@ const maintenance = require("./maintenance");
 const retrieval = require("./retrieval");
 const skillsSync = require("./skills");
 const providers = require("./providers");
+const execBackend = require("./exec-backend");
+const worktree = require("./worktree");
+const semantic = require("./semantic");
+const media = require("./media");
 const proxy = require("./proxy");
 const { RunWatchdog } = require("./watchdog");
 const { stripStatus, verdict: autoVerdict, readStatus } = require("./autopilot");
@@ -63,6 +67,17 @@ let taskCounter = 0;
 
 const REGISTRY = path.join(__dirname, "registry.json");
 let reg;
+
+// An MCP server is either a local program to launch (command + args) or a hosted
+// HTTP endpoint. Both arrive through the same one-line box, because a URL tells
+// them apart on its own — nothing extra for the owner to pick. Shared by every
+// place that writes an --mcp-config, so the two never drift.
+function mcpEntry(spec) {
+  const s = String((spec && spec.command) || "").trim();
+  if (/^https?:[/][/]/i.test(s)) return { type: "http", url: s.split(/\s+/)[0] };
+  const parts = s.split(/\s+/);
+  return { command: parts[0], args: parts.slice(1) };
+}
 
 // Starter skill library — the capability pack every office ships with, in the
 // spirit of the curated skills other agent stacks bundle. Each entry is plain
@@ -100,6 +115,14 @@ function loadReg() {
   }
   reg.tools = Object.keys(BUILTIN_TOOLS);
   reg.mcpServers = reg.mcpServers || {};
+  // Named places a run can happen. Empty = everything runs on this machine,
+  // which is how the office worked before backends existed.
+  reg.execBackends = reg.execBackends || {};
+  reg.ghostWorktrees = reg.ghostWorktrees === true;   // opt-in, see runSub
+  // Meaning-based recall on top of the word index. Off unless the owner points
+  // it at an embeddings endpoint — a local Ollama costs nothing and never
+  // leaves the machine, which is the shape this office prefers.
+  reg.semantic = reg.semantic || { enabled: false, baseUrl: "", model: "", key: "" };
   // One-time seed: a ready-to-use WEB capability (Playwright MCP, the Claude Code
   // browser standard). Tick "🔌 web" on an agent's tools and it can navigate,
   // click, type, submit forms and screenshot real pages. Runs --isolated (a fresh
@@ -250,7 +273,10 @@ function monitorCount() {
 function rosterEvt() {
   return { type: "roster.sync", agents: reg.agents, roles: reg.roles,
     tools: reg.tools, builtinTools: BUILTIN_TOOLS, mcp: reg.mcpServers,
+    backends: reg.execBackends || {}, backend: reg.execBackend || "local",
     skills: reg.skills, autoSkills: reg.autoSkills !== false,
+    ghostWorktrees: reg.ghostWorktrees === true,
+    semantic: semantic.stats(),
     verifyDelegated: reg.verifyDelegated === true,
     ecoMode: reg.ecoMode === true,
     autoApprove: reg.autoApprove === true,
@@ -321,7 +347,10 @@ function slugId(name) {
 // them, and the office hears about it (skill.created).
 let _lastSkillLearn = 0;
 const SKILL_COOLDOWN_MS = 15 * 60 * 1000;
-async function maybeLearnSkill(agent, task, prompt, acts, finalText, projId) {
+// `failed` = the task ended badly. That is the single most informative moment
+// a skill ever gets: whatever it told the agent to do did not work. A failed
+// run reflects for REVISION only — it has no success to generalise from.
+async function maybeLearnSkill(agent, task, prompt, acts, finalText, projId, failed) {
   if (reg.autoSkills === false) return;
   // Adaptive: reflection is a full Claude run, so on a MATURE office (already has a
   // healthy auto-learned library) firing it after every task ~doubled the bill — throttle
@@ -330,8 +359,18 @@ async function maybeLearnSkill(agent, task, prompt, acts, finalText, projId) {
   // the whole point of the feature. ("auto" marks a self-learned skill; builtins don't count.)
   const learned = Object.values(reg.skills).filter((s) => s.auto).length;
   const young = learned < 8;
-  if (acts.length < (young ? 3 : 5)) return;
-  if (!young && Date.now() - _lastSkillLearn < SKILL_COOLDOWN_MS) return;
+  // A failure carrying a skill that might have caused it is worth a reflection
+  // every time: they are rare, and it is the one moment the office can learn
+  // that its own written instructions are wrong.
+  const ownSkills = ((reg.agents[agent] || {}).skills || [])
+    .map((id) => ({ id, sk: reg.skills[id] }))
+    .filter((x) => x.sk && x.sk.auto)
+    .slice(0, 6);
+  if (failed && !ownSkills.length) return;
+  if (!failed) {
+    if (acts.length < (young ? 3 : 5)) return;
+    if (!young && Date.now() - _lastSkillLearn < SKILL_COOLDOWN_MS) return;
+  }
   _lastSkillLearn = Date.now();
   const existing = Object.values(reg.skills).map((s) => s.name).join(", ") || "(none)";
   // ONE reflection call distills both: a reusable skill AND durable memory
@@ -350,6 +389,17 @@ async function maybeLearnSkill(agent, task, prompt, acts, finalText, projId) {
     `worth remembering across conversations (Thai)", ...max 2] | null,\n` +
     (projId ? ` "projectMemory": ["short durable fact specific to THIS project ` +
       `worth remembering (Thai)", ...max 2] | null}\n` : ` "projectMemory": null}\n`) +
+    (ownSkills.length
+      ? `\nThis agent's own auto-learned skills, which you MAY revise:\n` +
+        ownSkills.map((x) => `[${x.id}] ${x.sk.name}: ${String(x.sk.content).slice(0, 400)}`).join("\n") +
+        `\n\nAlso output: "refine": {"id":"<one id from the list above>",` +
+        `"content":"the FULL corrected instructions","why":"one line: what was wrong"} | null\n` +
+        (failed
+          ? `This task FAILED. If one of those skills gave advice that led it wrong, ` +
+            `revise that skill. Output null for "skill" — there is no success here to generalise.\n`
+          : `refine = null unless a skill above is actually WRONG or missing a step ` +
+            `this task proved necessary. Rewriting it to say the same thing differently is not an improvement.\n`)
+      : "") +
     `skill = null unless this contains a REUSABLE, GENERALIZABLE procedure ` +
     `not covered by an existing skill. memory/projectMemory = null unless ` +
     `genuinely worth remembering forever. Be strict; most tasks yield nulls.`,
@@ -360,6 +410,27 @@ async function maybeLearnSkill(agent, task, prompt, acts, finalText, projId) {
     const j = JSON.parse(m[0]);
     if (Array.isArray(j.memory)) memAppend(agent, j.memory.slice(0, 2));
     if (projId && Array.isArray(j.projectMemory)) projMemAppend(projId, j.projectMemory.slice(0, 2));
+    // Revise before creating: if this run proved an existing skill wrong, that
+    // matters more than adding another one beside it.
+    const rf = j.refine;
+    if (rf && rf.id && rf.content && ownSkills.some((x) => x.id === rf.id)) {
+      const cur = reg.skills[rf.id];
+      // Only ever a skill the office wrote itself. A builtin is part of the
+      // office's contract and a hand-edited skill is the owner's writing —
+      // neither is the model's to rewrite.
+      if (skillsSync.canRefine(cur) && String(rf.content).trim() !== String(cur.content).trim()) {
+        cur.prev = cur.content;            // one step back is always available
+        cur.content = String(rf.content).slice(0, 4000);
+        cur.revs = (cur.revs || 0) + 1;
+        cur.refinedBy = agent;
+        cur.refinedWhy = String(rf.why || "").slice(0, 200);
+        saveReg();
+        pushRoster();
+        if (retrievalOk) try { retrieval.reindexSkill(rf.id, cur); retrieval.persist(); } catch {}
+        try { if (reg.nativeSkills !== false) skillsSync.syncAgent(AGENTS_DIR, agent, (reg.agents[agent] || {}).skills || [], reg.skills); } catch {}
+        broadcast({ type: "skill.refined", agent, task, skill: cur.name, why: cur.refinedWhy });
+      }
+    }
     const sk = j.skill;
     if (!sk || !sk.name || !sk.content) return;
     const id = slugId(sk.name);
@@ -1106,6 +1177,39 @@ try {
   retrievalOk = true;
   console.log("[retrieval]", JSON.stringify(retrieval.stats()));
 } catch (e) { console.error("[retrieval] init:", e.message); }
+
+// The semantic tier rides alongside the word index: same documents, a vector
+// each. Everything about it is best-effort — if the endpoint is missing or
+// down, retrieval keeps working exactly as it did before it existed.
+const SEMANTIC_CACHE = path.join(WORKSPACE, "index", "semantic.json");
+function semanticConfigure() {
+  const spec = reg.semantic || {};
+  // The key is named, not stored twice: it comes from 🔗 CONNECT like every
+  // other credential, so it is never duplicated into the retrieval settings.
+  const key = spec.keyName ? (reg.apiKeys || {})[spec.keyName] || "" : "";
+  const ok = semantic.configure({ ...spec, key }, SEMANTIC_CACHE);
+  if (ok) semantic.load();
+  return ok;
+}
+// Re-embed whatever changed. Debounced, because a burst of note edits should
+// cost one pass, not one per line.
+let semanticTimer = null;
+function semanticSync(delay = 4000) {
+  if (!retrievalOk || !semantic.ready()) return;
+  clearTimeout(semanticTimer);
+  semanticTimer = setTimeout(() => {
+    semantic.indexDocs(retrieval.allDocs())
+      .then((n) => { if (n) console.log("[semantic] embedded " + n + " document(s)"); })
+      .catch((e) => console.error("[semantic]", e.message));
+  }, delay);
+  if (semanticTimer.unref) semanticTimer.unref();
+}
+try {
+  if (semanticConfigure()) {
+    console.log("[semantic]", JSON.stringify(semantic.stats()));
+    semanticSync(8000);   // after boot settles, not during it
+  }
+} catch (e) { console.error("[semantic] init:", e.message); }
 // Self-heal when the owner edits OFFICE.md outside the daemon.
 try {
   fs.watchFile(OFFICE_MD, { interval: 5000 }, () => {
@@ -1158,7 +1262,9 @@ function cleanForQuery(text) {
 // the agent's own memory, this project's memory, and owner facts) instead of
 // dumping the last 8 bullets. Pointers stay so full recall is one Read/​/recall
 // away. Fail-open: no index / flag off / no match → exactly the old last-8 dump.
-function memoryNote(agent, taskText, projId) {
+// qvec: an already-embedded query, when the caller was somewhere it could
+// await one. Absent, this is plain BM25 — which is what it always was.
+function memoryNote(agent, taskText, projId, qvec) {
   const memRef = path.basename(memFile(agent), ".md");
   const header = `\n<office-memory>\n` +
     `ข้อมูลกลางออฟฟิศ: workspace/OFFICE.md (เปิดอ่านเฉพาะเมื่อเกี่ยวกับงาน)\n` +
@@ -1173,7 +1279,8 @@ function memoryNote(agent, taskText, projId) {
       const tiers = projId ? ["mem", "proj", "user"] : ["mem", "user"];
       const refs = { mem: memRef, user: true };
       if (projId) refs.proj = projId;
-      const hits = retrieval.search(q, { tiers, refs, k: 6, boost: { proj: 1.3, mem: 1.2, user: 1.0 } });
+      const hits = retrieval.search(q, { tiers, refs, k: 6, qvec,
+        boost: { proj: 1.3, mem: 1.2, user: 1.0 } });
       const lines = []; let used = 0;
       for (const h of hits) {
         const t = h.text.replace(/\s+/g, " ").trim();
@@ -1214,6 +1321,9 @@ const COST_RATES = {
   gemini_transcribe_each: 0.002,     // Gemini STT fallback, per clip (~30s)
   openai_whisper_each:    0.003,     // OpenAI Whisper, per clip (~30s @ $0.006/min)
   openai_image_each:      0.04,      // OpenAI image, per image
+  gemini_video_each:      2.00,      // Veo, per clip — an order of magnitude
+                                     // above everything else here, which is why
+                                     // the Studio says the price before you press
 };
 // Add an ESTIMATED secondary-tool spend under stats[day].aux[provider].
 function auxCost(provider, usd) {
@@ -1659,7 +1769,10 @@ function projectNote() {
   const sysTools = featuresMap().image ? `
 เครื่องมือกลางของออฟฟิศ (เรียกผ่าน Bash ได้เลย):
 - 🖼 สร้างภาพ AI: curl -s -X POST http://127.0.0.1:8787/gen/image -H "content-type: application/json" -d "{\\"prompt\\":\\"<english prompt>\\"}"
-  → ได้ {"path": "..."} — ใส่ path นั้นในคำตอบ แชทของเจ้าของจะแสดงรูปอัตโนมัติ` : "";
+  → ได้ {"path": "..."} — ใส่ path นั้นในคำตอบ แชทของเจ้าของจะแสดงรูปอัตโนมัติ
+- ✏️ แก้ภาพเดิม: curl -s -X POST http://127.0.0.1:8787/gen/image/edit -H "content-type: application/json" -d "{\\"url\\":\\"/uploads/<file>.png\\",\\"prompt\\":\\"<english instruction>\\"}"
+  → ได้ไฟล์ใหม่ ภาพเดิมไม่ถูกทับ ทำซ้ำหลายรอบได้
+  (🎬 วิดีโอมีในห้อง Media Studio — เจ้าของกดเองเท่านั้น เพราะคิดเงินต่อคลิป)` : "";
   // Cap to the 12 most-recent projects so the note stays bounded as they pile up
   // (the full list is always one GET /registry away).
   const recent = projects.slice(-12);
@@ -1889,6 +2002,48 @@ SUB: <งานย่อยที่ชัดเจนครบถ้วนใ�
 ระบบจะส่งร่างโคลนไปทำขนานกัน แล้วรวมผลกลับมาให้คุณสรุปเป็นคำตอบสุดท้าย.
 </system-capability>`;
 
+// Where an agent's run actually happens. Everything above this line builds the
+// SAME claude arguments it always did; this decides whether they run here, in a
+// container, or on another machine, and translates the host paths inside them
+// for wherever that is.
+//
+// A backend that cannot be built correctly does NOT quietly fall back to
+// running locally — an owner who put an agent in a box expects it to stay in
+// the box. It comes back as a child that fails on its first tick, so the run
+// ends through the same error path as any other spawn failure and the reason
+// reaches the office feed instead of a log nobody reads.
+function spawnAgent(agentId, argv, options) {
+  const picked = execBackend.pick(reg, agentId);
+  if (picked.unknown)
+    console.error("[backend] agent " + agentId + " wants unknown backend \"" + picked.unknown + "\" — running local");
+  let planned;
+  try {
+    planned = execBackend.plan(picked.spec, {
+      argv, cwd: options.cwd, env: options.env,
+      officeRoot: path.join(__dirname, ".."),
+    });
+  } catch (e) {
+    return failedChild("backend \"" + picked.name + "\": " + e.message);
+  }
+  if (planned.describe !== "local")
+    console.log("[backend] " + agentId + " -> " + planned.describe);
+  return spawn(planned.file, planned.args, planned.options);
+}
+
+// A stand-in for a child process that could never be started. It satisfies the
+// same shape every caller uses (stdin to write the prompt into, stdout/stderr
+// to read) and then emits 'error', which is already handled everywhere.
+function failedChild(message) {
+  const { PassThrough } = require("stream");
+  const ch = new (require("events").EventEmitter)();
+  ch.stdin = new PassThrough(); ch.stdin.resume();
+  ch.stdout = new PassThrough(); ch.stdout.end();
+  ch.stderr = new PassThrough(); ch.stderr.end();
+  ch.kill = () => {};
+  ch.pid = null;
+  setImmediate(() => ch.emit("error", new Error(message)));
+  return ch;
+}
 function runClaude(agent, prompt, opts = {}) {
   const task = "t" + ++taskCounter;
 
@@ -2023,8 +2178,7 @@ function runClaude(agent, prompt, opts = {}) {
   if (mcpNames.length) {
     const conf = { mcpServers: {} };
     for (const n of mcpNames) {
-      const parts = String(reg.mcpServers[n].command).trim().split(/\s+/);
-      conf.mcpServers[n] = { command: parts[0], args: parts.slice(1) };
+      conf.mcpServers[n] = mcpEntry(reg.mcpServers[n]);
     }
     mcpConfig = path.join(__dirname, `mcp_${agent.replace(/[^\w-]/g, "_")}.json`);
     fs.writeFileSync(mcpConfig, JSON.stringify(conf));
@@ -2045,7 +2199,7 @@ function runClaude(agent, prompt, opts = {}) {
     }
     preamble += `\nกระดานโน้ตกลางของออฟฟิศ: ไฟล์ notes.md ใน workspace — ` +
       `อ่านได้ และเพิ่มบรรทัด "- ข้อความ" เพื่อฝากโน้ตถึง CEO ได้\n`;
-    preamble += memoryNote(agent, String(opts.logPrompt || prompt), projId);
+    preamble += memoryNote(agent, String(opts.logPrompt || prompt), projId, opts.qvec);
     preamble += "</persona>\n\n";
   }
   // The Director (main) is the office MANAGER first — non-negotiable, and it survives any
@@ -2198,11 +2352,16 @@ model "${mtag}". If the owner asks which AI/model/LLM you are, answer truthfully
   }
 
   const useShell = cliEngine ? (cliEngine.includes("codex") ? true : false) : true;
-  const child = spawn(cliExe, args, {
-    cwd,
-    shell: useShell,
-    env: { ...process.env, ...(reg.apiKeys || {}), ...route.env, OFFICE_ADAPTER: "1", OFFICE_AGENT: agent, OFFICE_TASK: task },
-  });
+  const runEnv = { ...process.env, ...(reg.apiKeys || {}), ...route.env,
+    OFFICE_ADAPTER: "1", OFFICE_AGENT: agent, OFFICE_TASK: task };
+  // A local CLI engine (codex/grok/agy) is a binary on THIS machine and takes its
+  // own arguments, so it always runs here. The claude path goes through spawnAgent,
+  // which is what lets an agent run in a container or on another machine
+  // (daemon/exec-backend.js). A CLI-engine agent would need that CLI installed on
+  // the remote too, so it stays local until someone actually asks for it.
+  const child = cliEngine
+    ? spawn(cliExe, args, { cwd, shell: useShell, env: runEnv })
+    : spawnAgent(agent, args, { cwd, env: runEnv });
   // Track the run per project so the owner can stop it and take the project over.
   if (projId) {
     (projChildren[projId] = projChildren[projId] || new Set()).add(child);
@@ -2462,7 +2621,9 @@ model "${mtag}". If the owner asks which AI/model/LLM you are, answer truthfully
             runSubAgents(agent, entry, subTasks.slice(0, 4), opts.onDone);
           } else {
             fireDone(lastText, !m.is_error);
-            if (!m.is_error) maybeLearnSkill(agent, task, prompt, acts, lastText, projId);
+            // ทั้งสองผลลัพธ์ได้ทบทวน: สำเร็จ = กลั่นเป็นสกิลใหม่ได้, ล้มเหลว = แก้สกิลเดิม
+            // ซึ่งมีค่ากว่า และเดิมถูกทิ้งไปเปล่าๆ
+            maybeLearnSkill(agent, task, prompt, acts, lastText, projId, !!m.is_error);
           }
         }
       }
@@ -2657,6 +2818,7 @@ function ceoFlow(prompt, session, project, opts = {}) {
   return runClaude("main", wrapped, {
     session,
     project,
+    qvec: opts.qvec,          // the caller embedded the owner's words already
     logPrompt: opts.logPrompt || ("👑 (CEO) " + prompt),
     filterText: (t) => stripStatus(df(t)),
     onEntry: (k) => { keyRef.key = k; autoRounds.delete(k); },
@@ -3023,8 +3185,7 @@ function runSub(parentId, subId, taskText, entry, onDone) {
   if (mcpNames.length) {
     const conf = { mcpServers: {} };
     for (const n of mcpNames) {
-      const parts = String(reg.mcpServers[n].command).trim().split(/\s+/);
-      conf.mcpServers[n] = { command: parts[0], args: parts.slice(1) };
+      conf.mcpServers[n] = mcpEntry(reg.mcpServers[n]);
     }
     mcpConfig = path.join(__dirname, `mcp_${parentId.replace(/[^\w-]/g, "_")}_sub.json`);
     fs.writeFileSync(mcpConfig, JSON.stringify(conf));
@@ -3038,12 +3199,42 @@ function runSub(parentId, subId, taskText, entry, onDone) {
 
   const route = brainRoute(parentId);
 
+  // Ghosts work where their parent works (project-bound threads included)…
+  const sharedCwd = (entry.proj && projectDir(entry.proj)) || WORKSPACE;
+  const projCwd = entry.proj ? projectDir(entry.proj) : null;
+  // …except when the owner asks for isolation. Ghosts are the one place the office
+  // runs several sessions at once in ONE directory, which is a race no amount of
+  // care wins. A worktree is the same repo checked out separately, so two ghosts
+  // editing one file cannot see each other's edits.
+  //
+  // Off by default on purpose: it MOVES where a ghost's edits land — they arrive as
+  // a branch to merge instead of as changes already in the working tree. Project
+  // work only: the plain workspace lives inside the office's own repo, so isolating
+  // there would put a ghost's notes on an office branch.
+  const wt = (reg.ghostWorktrees === true && projCwd)
+    ? worktree.create(projCwd, subId) : null;
+  const subCwd = wt ? wt.dir : sharedCwd;
+  // The parent writes jobs the obvious way ("in K:\\work\\game, edit shared.txt") and a
+  // ghost handed an absolute path uses it — walking straight out of its own checkout
+  // and back in with its siblings.
+  const job = wt ? worktree.rewritePaths(taskText, projCwd, wt.dir) : taskText;
+
   const subJobText = `You are a temporary SUB-AGENT — a parallel clone of "${a.name}" (${a.role}) ` +
     `at this AI office.` +
     (a.prompt ? `\nParent persona:\n${a.prompt}\n` : "\n") +
     `You were split off for ONE focused job. Do it fast and directly; your final ` +
     `message must BE the result (data, findings, answer) — no meta talk, no asking ` +
-    `back. Reply in the language of the job. Never split further.\n\nJOB: ${taskText}`;
+    `back. Reply in the language of the job. Never split further.\n` +
+    // Isolation is only real if the INSTRUCTIONS agree with it. Naming the home
+    // directory is what stops a ghost drifting back out to the shared one.
+    (wt
+      ? `\nYou have your OWN private checkout of this project at ${wt.dir}. Other ` +
+        `clones are working on the same project at the same time, each in their own ` +
+        `copy. Do every part of this job inside YOUR directory — never reach outside ` +
+        `it, even if some other path looks like the same project. Your changes are ` +
+        `collected from there when you finish.\n`
+      : "") +
+    `\nJOB: ${job}`;
 
   if (cliEngine.includes("grok")) {
     cliExe = "grok";
@@ -3096,11 +3287,16 @@ function runSub(parentId, subId, taskText, entry, onDone) {
   }
 
   // Ghosts work where their parent works (project-bound threads included).
-  const subCwd = (entry.proj && projectDir(entry.proj)) || WORKSPACE;
-  const child = spawn(cliExe, args, {
-    cwd: subCwd, shell: true,
-    env: { ...process.env, ...(reg.apiKeys || {}), ...route.env, OFFICE_ADAPTER: "1", OFFICE_AGENT: subId, OFFICE_TASK: entry.key },
-  });
+  const child = cliEngine
+    ? spawn(cliExe, args, {
+        cwd: subCwd, shell: true,
+        env: { ...process.env, ...(reg.apiKeys || {}), ...route.env, OFFICE_ADAPTER: "1", OFFICE_AGENT: subId, OFFICE_TASK: entry.key },
+      })
+    // A ghost runs where its parent runs — same backend, same box.
+    : spawnAgent(parentId, args, {
+        cwd: subCwd,
+        env: { ...process.env, ...(reg.apiKeys || {}), ...route.env, OFFICE_ADAPTER: "1", OFFICE_AGENT: subId, OFFICE_TASK: entry.key },
+      });
 
   if (tempPromptFile) {
     try { fs.writeFileSync(tempPromptFile, subJobText, "utf8"); } catch (e) { console.error("[cli] sub prompt file:", e); }
@@ -3108,13 +3304,19 @@ function runSub(parentId, subId, taskText, entry, onDone) {
     child.stdin.write(subJobText);
     child.stdin.end();
   }
-
   let buf = "", lastText = "", finished = false;
   const finish = (ok) => {
     if (finished) return;
     finished = true;
     if (tempPromptFile) { try { fs.unlinkSync(tempPromptFile); } catch {} }
     clearTimeout(watchdog);
+    // Settle the worktree even when the run FAILED: a ghost that was killed
+    // half way through still wrote real files, and throwing them away is worse
+    // than leaving a branch nobody merges.
+    if (wt) {
+      try { lastText += worktree.settle(wt, taskText); }
+      catch (e) { console.error("[worktree] settle:", e.message); }
+    }
     onDone(lastText, ok);
   };
   // Ghosts are short-lived by contract — a stuck one is reaped, its slot
@@ -3459,74 +3661,22 @@ async function imageTextBlock(files) {
     "(ถ้าโมเดลคุณดูภาพได้เอง ให้ใช้ Read กับไฟล์ต้นฉบับเพื่อความละเอียด)]:\n" + parts.join("\n\n");
 }
 
-// ---------------------------------------------------------------- image gen
-// 🖼 a SYSTEM TOOL any agent (or the owner) can call: text → PNG on disk.
-// OpenAI gpt-image-1 first, Gemini image generation as the fallback.
-function genImage(prompt) {
-  return new Promise((resolve, reject) => {
-    const k = reg.apiKeys || {};
-    const https = require("https");
-    const save = (b64) => {
-      const dir = path.join(WORKSPACE, "uploads");
-      fs.mkdirSync(dir, { recursive: true });
-      const name = "gen_" + Date.now() + ".png";
-      const full = path.join(dir, name);
-      fs.writeFileSync(full, Buffer.from(b64, "base64"));
-      resolve({ path: full, url: "/uploads/" + name });
-    };
-    const tryGemini = (err) => {
-      if (!k.GEMINI_API_KEY) return reject(err || new Error("ต้องมี OPENAI_API_KEY หรือ GEMINI_API_KEY (⚙ CONNECT)"));
-      const body = JSON.stringify({
-        contents: [{ parts: [{ text: "Generate an image: " + String(prompt).slice(0, 2000) }] }],
-        generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
-      });
-      const rq = https.request({
-        method: "POST", host: "generativelanguage.googleapis.com",
-        path: "/v1beta/models/gemini-2.5-flash-image:generateContent?key=" + k.GEMINI_API_KEY,
-        headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) },
-      }, (rs) => {
-        let o = "";
-        rs.on("data", (c) => (o += c));
-        rs.on("end", () => {
-          try {
-            const j = JSON.parse(o);
-            const part = j.candidates && j.candidates[0] &&
-              j.candidates[0].content.parts.find((x) => x.inlineData);
-            if (part) { auxCost("gemini", COST_RATES.gemini_image_each); save(part.inlineData.data); }
-            else reject(new Error((j.error && j.error.message) || "gemini image: empty"));
-          } catch (e) { reject(e); }
-        });
-      });
-      rq.setTimeout(120000, () => rq.destroy(new Error("gemini image timeout")));
-      rq.on("error", reject);
-      rq.write(body);
-      rq.end();
-    };
-    if (!k.OPENAI_API_KEY) return tryGemini(null);
-    const body = JSON.stringify({ model: "gpt-image-1",
-      prompt: String(prompt).slice(0, 4000), size: "1024x1024" });
-    const rq = https.request({
-      method: "POST", host: "api.openai.com", path: "/v1/images/generations",
-      headers: { authorization: "Bearer " + k.OPENAI_API_KEY,
-        "content-type": "application/json", "content-length": Buffer.byteLength(body) },
-    }, (rs) => {
-      let o = "";
-      rs.on("data", (c) => (o += c));
-      rs.on("end", () => {
-        try {
-          const j = JSON.parse(o);
-          if (j.data && j.data[0] && j.data[0].b64_json) { auxCost("openai", COST_RATES.openai_image_each); save(j.data[0].b64_json); }
-          else tryGemini(new Error((j.error && j.error.message) || "openai image: empty"));
-        } catch (e) { tryGemini(e); }
-      });
-    });
-    rq.setTimeout(180000, () => rq.destroy(new Error("openai image timeout")));
-    rq.on("error", (e) => tryGemini(e));
-    rq.write(body);
-    rq.end();
-  });
+// ---------------------------------------------------------------- media room
+// 🖼 🎬 SYSTEM TOOLS any agent (or the owner) can call. The provider work lives
+// in daemon/media.js; this is the office's context for it — which keys, where
+// files land, and who gets billed.
+function mediaCtx() {
+  return {
+    keys: reg.apiKeys || {},
+    uploads: path.join(WORKSPACE, "uploads"),
+    onCost: (provider, kind) => {
+      if (kind === "image")
+        auxCost(provider, provider === "openai" ? COST_RATES.openai_image_each : COST_RATES.gemini_image_each);
+      else if (kind === "video") auxCost(provider, COST_RATES.gemini_video_each);
+    },
+  };
 }
-
+const genImage = (prompt) => media.image(prompt, mediaCtx());
 // ---------------------------------------------------------------- updates
 // A release = a bump of the VERSION file on the `main` branch. We compare the
 // LOCAL VERSION with main's VERSION (raw), so routine commits (docs, web, work
@@ -4143,7 +4293,7 @@ async function runDiscussion(ids, topic, rounds, social, preKey) {
         `- Participants: ${names}\n\n${summaryBlock}` +
         entry.log.map((m) => `**[${m.phase || "chat"}] ${(reg.agents[m.who] || { name: m.who }).name}**: ${m.text}`).join("\n\n") + "\n";
       fs.writeFileSync(path.join(dir, `${entry.key}.md`), md);
-      try { if (retrievalOk) { retrieval.addDoc("arch", "meeting", `arch:meeting:${entry.key}`, md.slice(0, 1200)); retrieval.persist(); } } catch {}
+      try { if (retrievalOk) { retrieval.addDoc("arch", "meeting", `arch:meeting:${entry.key}`, md.slice(0, 1200)); retrieval.persist(); semanticSync(); } } catch {}
     } catch (e) { console.error("[meeting] minutes write failed:", e && e.message); }
   }
 }
@@ -4377,23 +4527,31 @@ const server = http.createServer((req, res) => {
         // requested project workspace.
         // 🤖 AUTO rides on every owner-facing turn: talking straight to the Director
         // or to one teammate stalls the same way a CEO order does.
+        // Embed the owner's message ONCE, here, where waiting is allowed. Prompt
+        // assembly below is synchronous the whole way down, so this is the last
+        // point at which a query vector can be fetched at all. Null when the
+        // semantic tier is off or its endpoint is unreachable — recall is then
+        // the word index, exactly as before.
+        let qvec = null;
+        try { qvec = await semantic.embedQuery(cleanForQuery(origPrompt)); } catch {}
         const keyRef = { key: session || "" }, dele = { hit: false };
         const reply = wait ? (t, ok) => waited && waited(stripStatus(t), ok) : undefined;
         const task = agent === "ceo"
           ? ceoFlow(prompt, session, project,
-              { logPrompt: voice ? "🎤👑 (สั่งด้วยเสียง) " + origPrompt : origPrompt,
+              { qvec,
+                logPrompt: voice ? "🎤👑 (สั่งด้วยเสียง) " + origPrompt : origPrompt,
                 relay: true,  // mirror the CEO conversation to connected channels
                 onDone: reply })
           : agent === "main"
             ? (() => {
                 const df = makeDelegateFilter(0, session, () => { dele.hit = true; });
                 return runClaude("main", prompt + directorNote() + autoNote(),
-                  { session, project, logPrompt: origPrompt,
+                  { session, project, logPrompt: origPrompt, qvec,
                     filterText: (t) => stripStatus(df(t)),
                     onEntry: (k) => { keyRef.key = k; autoRounds.delete(k); },
                     onDone: autoContinue("main", project, keyRef, reply, true, dele) });
               })()
-            : runClaude(agent, prompt + autoNote(), { session, project, logPrompt: origPrompt,
+            : runClaude(agent, prompt + autoNote(), { session, project, logPrompt: origPrompt, qvec,
                 resumable: true, resumePrompt: origPrompt,  // a member's direct task auto-resumes
                 filterText: (t) => stripStatus(t),
                 onEntry: (k) => { keyRef.key = k; autoRounds.delete(k); },
@@ -4674,10 +4832,17 @@ const server = http.createServer((req, res) => {
     const q = u.searchParams.get("q") || "";
     const k = Math.min(20, Math.max(1, parseInt(u.searchParams.get("k") || "8", 10) || 8));
     const tiers = (u.searchParams.get("tiers") || "").split(",").filter(Boolean);
-    let hits = [];
-    try { if (retrievalOk) hits = retrieval.search(q, { k, tiers: tiers.length ? tiers : undefined }); } catch {}
-    res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ q, hits, stats: retrievalOk ? retrieval.stats() : null }));
+    // An archive search is the one place worth waiting a moment for meaning:
+    // the note whose WORDS do not match the question is usually the one being
+    // looked for. The router is not async, so this waits on the promise and
+    // falls through to plain BM25 if the endpoint is off or unreachable.
+    semantic.embedQuery(q).catch(() => null).then((qvec) => {
+      let hits = [];
+      try { if (retrievalOk) hits = retrieval.search(q, { k, qvec, tiers: tiers.length ? tiers : undefined }); } catch {}
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ q, hits, stats: retrievalOk ? retrieval.stats() : null,
+        semantic: semantic.stats() }));
+    });
 
   } else if (req.method === "POST" && req.url === "/registry/agent") {
     // Create or update an agent — including its BRAIN (provider/model), persona,
@@ -4732,6 +4897,9 @@ const server = http.createServer((req, res) => {
             const h = p.home !== undefined ? p.home : (cur.home || "");
             return h && projectDir(h) ? h : "";
           })(),
+          // 📦 where this agent RUNS (local / a configured container / another
+          // machine). Unset means the office default.
+          backend: String(p.backend !== undefined ? p.backend : (cur.backend || "")).slice(0, 40),
         };
         saveReg();
         pushRoster();
@@ -4794,6 +4962,10 @@ const server = http.createServer((req, res) => {
             name: String(p.name || id).slice(0, 60),
             description: String(p.description || "").slice(0, 200),
             content: String(p.content || "").slice(0, 4000),
+            // Once a human has written in here, the office's own reflection stops
+            // rewriting it. Self-improvement is for what the office wrote itself;
+            // your words are not its draft.
+            edited: true,
           };
         }
         saveReg();
@@ -4814,6 +4986,61 @@ const server = http.createServer((req, res) => {
       }
     });
 
+  } else if (req.method === "POST" && req.url === "/registry/backend") {
+    // Execution backends — WHERE agents run. Owner-only: an agent that could
+    // edit this could move itself out of the container it was put in.
+    if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
+    readBody(req, (body) => {
+      try {
+        const p = JSON.parse(body);
+        if (p.default !== undefined) {         // pick the office-wide default
+          const d = String(p.default || "local");
+          if (d !== "local" && !reg.execBackends[d]) throw new Error("no such backend: " + d);
+          reg.execBackend = d;
+        } else {
+          const n = String(p.name || "").trim().toLowerCase()
+            .replace(/[^a-z0-9_-]/g, "-").slice(0, 40);
+          if (!n) throw new Error("no name");
+          if (n === "local") throw new Error("'local' is the built-in backend and cannot be redefined");
+          if (p.remove) {
+            delete reg.execBackends[n];
+            for (const a of Object.values(reg.agents)) if (a.backend === n) delete a.backend;
+            if (reg.execBackend === n) reg.execBackend = "local";
+          } else {
+            const kind = String(p.kind || "").trim();
+            if (!["docker", "ssh"].includes(kind)) throw new Error("kind must be docker or ssh");
+            const spec = { kind };
+            if (kind === "docker") {
+              spec.image = String(p.image || "").trim().slice(0, 200);
+              if (p.network) spec.network = String(p.network).trim().slice(0, 60);
+              if (Array.isArray(p.args)) spec.args = p.args.map((x) => String(x).slice(0, 120)).slice(0, 20);
+            } else {
+              spec.host = String(p.host || "").trim().slice(0, 200);
+              spec.officeDir = String(p.officeDir || "").trim().slice(0, 400);
+              if (p.dir) spec.dir = String(p.dir).trim().slice(0, 400);
+              if (p.identity) spec.identity = String(p.identity).trim().slice(0, 400);
+              if (p.port) spec.port = Math.max(1, Math.min(65535, Number(p.port) || 22));
+            }
+            // Build it once here so a broken definition is refused at the point
+            // the owner can still see why, not on the next agent run.
+            execBackend.plan(spec, {
+              argv: ["-p", "--settings", path.join(WORKSPACE, ".claude", "settings.json")],
+              cwd: WORKSPACE, env: {}, officeRoot: path.join(__dirname, ".."),
+            });
+            reg.execBackends[n] = spec;
+          }
+        }
+        saveReg();
+        pushRoster();
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (e) {
+        // JSON, because the Tools UI reads api() responses as JSON — a refusal
+        // the owner cannot see is the same as no refusal at all.
+        res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: String(e.message) }));
+      }
+    });
   } else if (req.method === "POST" && req.url === "/registry/mcp") {
     // Custom capability = MCP servers (the Claude Code plugin standard).
     // name + launch command; assignment per agent via "mcp:<name>" entries.
@@ -6143,6 +6370,91 @@ end tell`;
       }
     });
 
+  } else if (req.method === "POST" && req.url === "/registry/skill/revert") {
+    // Undo the last revision of a self-improved skill. Refinement is the office
+    // rewriting its own instructions, so there has to be a way back that does
+    // not involve the owner reconstructing what it used to say.
+    if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
+    readBody(req, (body) => {
+      try {
+        const id = String(JSON.parse(body).id || "");
+        const sk = reg.skills[id];
+        if (!sk) throw new Error("no such skill");
+        if (!sk.prev) throw new Error("this skill has no earlier version to go back to");
+        const back = sk.prev;
+        delete sk.prev;                    // one step, not a stack
+        sk.content = back;
+        sk.revs = Math.max(0, (sk.revs || 1) - 1);
+        delete sk.refinedWhy;
+        saveReg();
+        pushRoster();
+        if (retrievalOk) try { retrieval.reindexSkill(id, sk); retrieval.persist(); } catch {}
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ ok: true, name: sk.name }));
+      } catch (e) {
+        res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: String(e.message) }));
+      }
+    });
+
+  } else if (req.method === "POST" && req.url === "/registry/semantic") {
+    // Meaning-based recall. Owner-only, and it takes the endpoint rather than a
+    // provider name on purpose: an embeddings API is the one shape every vendor
+    // agrees on, and a local Ollama is a first-class answer here, not a fallback.
+    if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
+    readBody(req, (body) => {
+      try {
+        const p = JSON.parse(body);
+        const next = {
+          enabled: !!p.enabled,
+          baseUrl: String(p.baseUrl || "").trim().replace(/\/+$/, "").slice(0, 300),
+          model: String(p.model || "").trim().slice(0, 120),
+          keyName: String(p.keyName || "").trim().slice(0, 60),
+        };
+        if (next.enabled && (!next.baseUrl || !next.model))
+          throw new Error("an embeddings endpoint and a model are both required");
+        reg.semantic = next;
+        saveReg();
+        // Prove it works NOW, while the owner is looking at the form. An
+        // endpoint that only fails later fails silently, and silent means the
+        // office quietly goes back to word matching and nobody knows why.
+        if (!semanticConfigure()) {
+          res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+          return res.end(JSON.stringify({ ok: true, ready: false, stats: semantic.stats() }));
+        }
+        semantic.embedQuery("ping").then((v) => {
+          if (!v) {
+            res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+            return res.end(JSON.stringify({ ok: true, ready: false, error: "the endpoint did not return an embedding — check the URL, the model name, and whether it is running" }));
+          }
+          semanticSync(500);
+          pushRoster();
+          res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ ok: true, ready: true, dims: v.length, stats: semantic.stats() }));
+        });
+      } catch (e) {
+        res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: String(e.message) }));
+      }
+    });
+
+  } else if (req.method === "POST" && req.url === "/registry/ghostworktrees") {
+    // Isolate parallel ghosts in their own git worktrees. Owner-only and
+    // off by default: it changes where a ghost's edits end up.
+    if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
+    readBody(req, (body) => {
+      try {
+        reg.ghostWorktrees = !!JSON.parse(body).enabled;
+        saveReg();
+        pushRoster();
+        res.writeHead(200);
+        res.end("ok");
+      } catch {
+        res.writeHead(400);
+        res.end("bad json");
+      }
+    });
+
   } else if (req.method === "POST" && req.url === "/registry/autoskills") {
     readBody(req, (body) => {
       try {
@@ -6589,6 +6901,86 @@ end tell`;
       } catch (e) { res.writeHead(400); res.end(String(e.message)); }
     });
 
+  } else if (req.method === "POST" && req.url === "/gen/image/edit") {
+    // 🖼 system tool: an existing picture + an instruction → a NEW picture.
+    // The original is never written to; an edit that destroys its own input is
+    // not an edit anyone can iterate with.
+    readBody(req, (body) => {
+      try {
+        const { file, url, prompt } = JSON.parse(body);
+        if (!prompt) throw new Error("no instruction");
+        const src = file || (url && url.startsWith("/uploads/")
+          ? path.join(WORKSPACE, "uploads", path.basename(url)) : null);
+        if (!src) throw new Error("no source image");
+        media.edit(src, prompt, mediaCtx()).then((out) => {
+          broadcast({ type: "image.generated", url: out.url }, false);
+          res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify(out));
+        }).catch((e) => {
+          res.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
+          res.end(String(e.message));
+        });
+      } catch (e) { res.writeHead(400); res.end(String(e.message)); }
+    });
+
+  } else if (req.method === "POST" && req.url === "/gen/video") {
+    // 🎬 Start a video. This one BILLS, and by a lot more than a picture, so it
+    // is owner-only from the UI header — an agent cannot decide on its own to
+    // spend a couple of dollars on a clip.
+    if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("video is owner-started only"); }
+    readBody(req, (body) => {
+      try {
+        const p = JSON.parse(body);
+        if (!p.prompt) throw new Error("no prompt");
+        const image = p.url && String(p.url).startsWith("/uploads/")
+          ? path.join(WORKSPACE, "uploads", path.basename(p.url)) : undefined;
+        media.videoStart(p.prompt, mediaCtx(), { image, aspectRatio: p.aspectRatio })
+          .then((st) => {
+            res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify(st));
+          })
+          .catch((e) => {
+            res.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
+            res.end(String(e.message));
+          });
+      } catch (e) { res.writeHead(400); res.end(String(e.message)); }
+    });
+
+  } else if (req.method === "GET" && req.url.split("?")[0] === "/gen/video") {
+    // 🎬 Poll. Minutes, not seconds — so the caller holds the operation name
+    // and asks, rather than the office holding a request open that long.
+    const op = new URL(req.url, "http://x").searchParams.get("op") || "";
+    media.videoPoll(op, mediaCtx()).then((st) => {
+      if (st.done) broadcast({ type: "video.generated", url: st.url }, false);
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify(st));
+    }).catch((e) => {
+      res.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
+      res.end(String(e.message));
+    });
+
+  } else if (req.method === "GET" && req.url.split("?")[0] === "/studio") {
+    // 🎨 Media Studio — make, edit and animate, in one window.
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    try { res.end(fs.readFileSync(path.join(__dirname, "studio.html"))); }
+    catch { res.end("<p>studio unavailable</p>"); }
+
+  } else if (req.method === "GET" && req.url === "/studio/list") {
+    // Everything the office has made, newest first — the Studio's gallery.
+    try {
+      const dir = path.join(WORKSPACE, "uploads");
+      const out = fs.readdirSync(dir)
+        .filter((f) => /^gen_.*\.(png|mp4)$/i.test(f))
+        .map((f) => ({ url: "/uploads/" + f, mtime: fs.statSync(path.join(dir, f)).mtimeMs,
+          kind: /\.mp4$/i.test(f) ? "video" : "image" }))
+        .sort((a, b) => b.mtime - a.mtime).slice(0, 60);
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ items: out }));
+    } catch {
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+      res.end('{"items":[]}');
+    }
+
   } else if (req.method === "GET" && req.url === "/proposals") {
     res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
     res.end(JSON.stringify({ proposals: proposals.slice(-30).reverse() }));
@@ -6875,14 +7267,22 @@ end tell`;
         "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps],
         { detached: true, stdio: "ignore", windowsHide: false }).unref();
     } else if (process.platform === "darwin") {
-      // macOS: git pull + rebuild in a visible Terminal window
+      // macOS: git pull + rebuild in a visible Terminal window.
+      // The install root follows the account name, so it can carry an apostrophe
+      // ("/Users/O'Brien/…") — quote it for the shell, then quote the whole
+      // command again as an AppleScript string. Pasted in raw it ends the quote
+      // and the rest of the path becomes commands to run.
       const root = path.join(__dirname, "..");
-      const script = `tell application "Terminal" to do script "cd '${root}' && git pull && ./build-mac.sh"`;
+      const shq = "'" + root.replace(/'/g, "'\\''") + "'";
+      const inner = `cd ${shq} && git pull && ./build-mac.sh`;
+      const script = `tell application "Terminal" to do script "${inner.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
       spawn("osascript", ["-e", script], { detached: true, stdio: "ignore" }).unref();
     } else {
-      // Linux: same idea, x-terminal-emulator
+      // Linux: same idea, x-terminal-emulator. build-LINUX.sh — this ran the
+      // macOS build script, so the in-app update button rebuilt nothing here.
       const root = path.join(__dirname, "..");
-      spawn("x-terminal-emulator", ["-e", `cd '${root}' && git pull && bash build-mac.sh`],
+      const shq = "'" + root.replace(/'/g, "'\\''") + "'";
+      spawn("x-terminal-emulator", ["-e", `cd ${shq} && git pull && bash build-linux.sh`],
         { detached: true, stdio: "ignore" }).unref();
     }
     res.writeHead(200); res.end("ok");
@@ -7143,6 +7543,16 @@ server.listen(OEP_PORT, "127.0.0.1", () => {
   // next client connect and pin agents as "working" forever. Journal a reset so it
   // replays last and clears any stale working state on the wallpaper + overlay.
   broadcast({ type: "task.reset" });
+  // Same reasoning for worktrees: a ghost that was mid-run when the office was
+  // killed left a checkout behind. Nothing is running yet, so anything still
+  // there is abandoned. Its BRANCH survives — only the checkout is swept.
+  try {
+    // Nothing is live yet, so every checkout under the ghost home is abandoned
+    // — a ghost settles its own on the way out, success or failure alike, so
+    // the only way one survives is the office being killed mid-run.
+    const n = worktree.sweep(new Set());
+    if (n) console.log("[worktree] swept " + n + " abandoned ghost checkout(s)");
+  } catch (e) { console.error("[worktree] sweep:", e.message); }
 });
 
 // Parent-death watchdog: if the shell that spawned us (via OEP_SPAWNED=1) exits
