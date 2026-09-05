@@ -4260,6 +4260,32 @@ const server = http.createServer((req, res) => {
     try { res.end(fs.readFileSync(path.join(__dirname, "pluginshub.html"))); }
     catch { res.end("<p>plugins hub unavailable</p>"); }
 
+  } else if (req.method === "GET" && req.url.split("?")[0] === "/tools/catalog") {
+    // The MCP tool catalog — same deal as the plugin one: fetched LIVE from the
+    // website so a package that gets renamed or deprecated can be corrected by a
+    // PR instead of an office release, falling back to the bundled copy offline.
+    // Half this catalog had rotted out from under us before it was wired this way.
+    const sendLocalTools = () => {
+      let txt = '{"tools":[]}';
+      try { txt = fs.readFileSync(path.join(__dirname, "..", "web", "tools.json"), "utf8"); } catch {}
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+      res.end(txt);
+    };
+    try {
+      const https = require("https");
+      const rq = https.get(
+        "https://raw.githubusercontent.com/bagidea/bagidea-office/main/web/tools.json",
+        { timeout: 3500, headers: { "user-agent": "bagidea-office" } }, (rs) => {
+          if (rs.statusCode !== 200) { rs.resume(); return sendLocalTools(); }
+          let d = ""; rs.on("data", (c) => (d += c));
+          rs.on("end", () => {
+            try { JSON.parse(d); res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }); res.end(d); }
+            catch { sendLocalTools(); }
+          });
+        });
+      rq.on("error", sendLocalTools);
+      rq.on("timeout", () => { rq.destroy(); sendLocalTools(); });
+    } catch { sendLocalTools(); }
   } else if (req.method === "GET" && req.url.split("?")[0] === "/plugins/catalog") {
     // The community plugin catalog — fetched LIVE from the website (so PR-curated
     // additions show up without waiting for an office update), falling back to the
