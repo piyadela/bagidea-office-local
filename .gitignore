@@ -1,0 +1,117 @@
+# Godot editor/import cache
+godot/.godot/
+# Godot-generated import sidecars (.uid + .import) — regenerated on import/launch
+# (the project resolves resources by path and rebuilds the import cache), so they
+# don't need tracking and would only churn. Keeps `git status` clean after imports.
+*.uid
+*.import
+
+# Rust build artifacts
+shell/target/
+shell/macos/wallpaper_shim/target/
+
+# macOS: built wallpaper shim (rebuilt by build-mac.sh) and the locally
+# downloaded Godot runtime (not ours to redistribute — see README "Run on macOS")
+shell/macos/*.dylib
+godot/bin-mac/
+
+# Personal Claude Code permission overrides (per-machine)
+.claude/settings.local.json
+
+# Runtime artifacts
+daemon/journal.jsonl
+daemon/*.bak
+# ...รวมสำเนาที่ตั้งชื่อพ่วงวันเวลาไว้ด้วย (เช่น sessions.json.bak-20260822-0859) —
+# เป็นสแนปช็อตประวัติแชทของเจ้าของ ไม่ควรขึ้น git
+daemon/*.bak-*
+daemon/registry.json
+daemon/sessions.json
+daemon/paused.json
+daemon/map_bg.png
+daemon/mcp_*.json
+daemon/jobs.json
+daemon/notes.json
+daemon/calendar.json
+daemon/projects.json
+daemon/monitor.txt
+daemon/monitors.txt
+daemon/monitor-debug.log
+daemon/proposals.json
+
+# Adapter session workspace (keep only the permission-hook config)
+workspace/*
+!workspace/.claude/
+workspace/.claude/*
+!workspace/.claude/settings.json
+
+# uploads/ is a runtime drop box for chat media (CEO images, screenshots, gen
+# art) — keep the dir itself tracked via a sentinel so it exists after a fresh
+# clone, but do NOT track the media files that land in it at runtime.
+!workspace/uploads/
+workspace/uploads/*
+!workspace/uploads/.gitkeep
+
+# Free art packs (free-license / CC0 — see README "Art assets") now ship IN the
+# repo, so a fresh install and `bagidea update` carry the full visuals + sounds.
+_assets_tmp/
+*.zip
+
+# Third-party asset archives
+*.rar
+*.7z
+# branded Godot runtime (172MB, built by copying Godot + rcedit --set-icon)
+godot/bin/
+tools/rcedit-x64.exe
+
+_shots/
+shots/
+# dev render harnesses + preview captures (grid rewrite)
+godot/_*.gd
+_grid_*.png
+_*.png
+
+# Working art files at repo root (untracked until the owner decides)
+CharacterBase*
+
+# Promo drafts + working images at repo root (owner's social material)
+THAI.md
+ENGLISH.md
+/Warrix.png
+/preview.jpg
+
+# A fresh install ships with NO bundled plugins — the office starts empty and the
+# owner adds what they want from the Plugins Hub (each its own GitHub clone). Nothing
+# under plugins/ is tracked.
+plugins/*
+daemon/layout.json
+daemon/i18n/
+dist/
+daemon/presets.json
+daemon/assets.json
+daemon/stats.json
+daemon/proposals.json
+
+# daemon stdout/stderr log (runtime)
+daemon/daemon.log
+daemon/proxy.log
+
+# macOS build/runtime artifacts
+bin/
+.serena/
+godot/bagidea_editor_ready
+godot/bagidea_world_ready
+daemon/registry.json.bak*
+
+# ── Secrets & key material — NEVER commit ──────────────────────────────
+.env*
+*.key
+keystore*
+*.pem
+*.p12
+*.pfx
+*privkey*
+*private-key*
+*seed*.txt
+mnemonic*.txt
+credentials.json
+secrets.json
