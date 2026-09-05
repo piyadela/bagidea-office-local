@@ -90,7 +90,13 @@ if (safe.length)
     (safe.length > 3 ? " ..." : ""));
 
 console.log("\n⚠ ต้องอ่านก่อน (" + review.length + ") — คุณแก้ไฟล์นี้เอง ทับแล้วของคุณหาย");
-review.forEach((f) => console.log("   " + NUM[f].padEnd(12) + " " + f + (tracked.has(f) ? "  (คุณ commit ไว้)" : "")));
+// ระยะห่างที่เหลือจริงคือ ของเรา ↔ upstream/main — ไม่ใช่ churn ของต้นทางตั้งแต่ tag ฐาน
+// (พอ port ไปแล้ว ตัวเลข churn จะหลอกว่ายังตามหลังอยู่เท่าเดิม ทั้งที่ตามทันแล้ว)
+review.forEach((f) => {
+  const d = (gitLines("diff", "--numstat", "upstream/main", "--", f)[0] || "0	0").split("	");
+  const gap = "+" + d[0] + "/-" + d[1];
+  console.log("   " + gap.padEnd(12) + " " + f + (tracked.has(f) ? "  (คุณ commit ไว้)" : ""));
+});
 if (review.length)
   console.log("   → node scripts/upstream-diff.js " + review[0] + "   แล้วค่อยเลือกหยิบเป็นส่วนๆ");
 
